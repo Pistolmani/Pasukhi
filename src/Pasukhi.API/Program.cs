@@ -1,11 +1,16 @@
 using System.Text;
+using FluentValidation;
+using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Pasukhi.API.Middleware;
 using Pasukhi.Application.Interfaces;
+using Pasukhi.Application.Validators;
 using Pasukhi.Domain.Entities;
 using Pasukhi.Infrastructure.Data;
+using Pasukhi.Infrastructure.Services;
 using Pasukhi.Infrastructure.Tenant;
 using Serilog;
 
@@ -63,12 +68,23 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantProvider, HttpTenantProvider>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IBusinessService, BusinessService>();
 
 builder.Services.AddControllers();
+builder.Services.AddFluentValidationAutoValidation();
+builder.Services.AddValidatorsFromAssemblyContaining<LoginRequestValidator>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
+    await db.Database.MigrateAsync();
+    await DbSeeder.SeedAsync(scope.ServiceProvider);
+}
 
 if (app.Environment.IsDevelopment())
 {
@@ -77,6 +93,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseSerilogRequestLogging();
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
