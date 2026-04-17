@@ -70,6 +70,11 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantProvider, HttpTenantProvider>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IBusinessService, BusinessService>();
+builder.Services.AddScoped<IChannelService, ChannelService>();
+builder.Services.AddScoped<IFaqService, FaqService>();
+builder.Services.AddScoped<IRuleService, RuleService>();
+builder.Services.AddScoped<IFaqMatcher, FaqMatcher>();
+builder.Services.AddScoped<IRuleMatcher, RuleMatcher>();
 
 builder.Services.AddControllers();
 builder.Services.AddFluentValidationAutoValidation();
