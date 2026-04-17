@@ -1,0 +1,202 @@
+{
+  "main": {
+    "id": "baa80b95116f8b5b",
+    "type": "split",
+    "children": [
+      {
+        "id": "27c20c38ac8af6d9",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "685fb2057ded9b8d",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "082bca5081f9cab8",
+    "type": "split",
+    "children": [
+      {
+        "id": "e11b36f32a08f2a8",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "d617b6f4e9719caa",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "a6903b43dc5e8279",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "31bbc38eda76d43a",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "e11837960eef6705",
+    "type": "split",
+    "children": [
+      {
+        "id": "08634d3274aee332",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "5e7bb4457237c170",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "პასუხი/node_modules/webpack/node_modules/schema-utils/node_modules/ajv-keywords/README.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for README"
+            }
+          },
+          {
+            "id": "f3d8deb84c271a41",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "პასუხი/node_modules/webpack/node_modules/schema-utils/node_modules/ajv-keywords/README.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from README"
+            }
+          },
+          {
+            "id": "4eb81f10f24fad09",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "19e27cdb12ac7eb9",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "5d140b76b193445e",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "პასუხი/node_modules/webpack/node_modules/schema-utils/node_modules/ajv-keywords/README.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of README"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "685fb2057ded9b8d",
+  "lastOpenFiles": [
+    "docs/codex/phase-1.md",
+    "docs/codex/phase-0.md",
+    "docs/codex",
+    "docs/ARCHITECTURE.md",
+    "docs",
+    "AGENTS.md",
+    "00 Maps/Project Docs.md",
+    "00 Maps/Operations Map.md",
+    "00 Maps/UI Package.md",
+    "00 Maps/App Package.md",
+    "00 Maps/API Package.md",
+    "00 Maps/Packages Map.md",
+    "00 Maps/Expo App.md",
+    "00 Maps/Next App.md",
+    "00 Maps/Apps Map.md",
+    "00 Maps/Project Map.md",
+    "00 Maps"
+  ]
+}

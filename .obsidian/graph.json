@@ -1,0 +1,72 @@
+{
+  "collapse-filter": false,
+  "search": "-path:node_modules -path:.obsidian -path:.claude -path:.git -path:.vscode -path:packages/ui/dist -path:apps/next/.next -path:apps/next/.tamagui -path:apps/next/.wrangler -path:apps/expo/.expo -path:apps/expo/assets -path:apps/next/public/pwa/icons",
+  "showTags": true,
+  "showAttachments": false,
+  "hideUnresolved": true,
+  "showOrphans": false,
+  "collapse-color-groups": false,
+  "colorGroups": [
+    {
+      "query": "tag:#map",
+      "color": {
+        "a": 1,
+        "rgb": 3447003
+      }
+    },
+    {
+      "query": "tag:#pasukhi OR path:Pasukhi",
+      "color": {
+        "a": 1,
+        "rgb": 16753920
+      }
+    },
+    {
+      "query": "tag:#app OR path:apps/next OR path:apps/expo",
+      "color": {
+        "a": 1,
+        "rgb": 5763719
+      }
+    },
+    {
+      "query": "tag:#package OR path:packages/api OR path:packages/app OR path:packages/ui",
+      "color": {
+        "a": 1,
+        "rgb": 15105570
+      }
+    },
+    {
+      "query": "tag:#docs OR path:README.md OR path:CONTRIBUTING.md OR path:SECURITY.md",
+      "color": {
+        "a": 1,
+        "rgb": 9807270
+      }
+    },
+    {
+      "query": "tag:#operations OR path:.github OR path:package.json OR path:tsconfig",
+      "color": {
+        "a": 1,
+        "rgb": 10038562
+      }
+    },
+    {
+      "query": "tag:#security OR path:SECURITY.md",
+      "color": {
+        "a": 1,
+        "rgb": 15548997
+      }
+    }
+  ],
+  "collapse-display": false,
+  "showArrow": true,
+  "textFadeMultiplier": 0.6,
+  "nodeSizeMultiplier": 1.35,
+  "lineSizeMultiplier": 1.15,
+  "collapse-forces": false,
+  "centerStrength": 0.45,
+  "repelStrength": 13,
+  "linkStrength": 0.85,
+  "linkDistance": 165,
+  "scale": 0.15692977291979365,
+  "close": false
+}
