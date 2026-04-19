@@ -1,6 +1,7 @@
 using System.Text;
 using FluentValidation;
 using FluentValidation.AspNetCore;
+using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,7 @@ using Pasukhi.API.Middleware;
 using Pasukhi.Application.Interfaces;
 using Pasukhi.Application.Validators;
 using Pasukhi.Domain.Entities;
+using Pasukhi.Infrastructure.Consumers;
 using Pasukhi.Infrastructure.Data;
 using Pasukhi.Infrastructure.Services;
 using Pasukhi.Infrastructure.Tenant;
@@ -75,6 +77,24 @@ builder.Services.AddScoped<IFaqService, FaqService>();
 builder.Services.AddScoped<IRuleService, RuleService>();
 builder.Services.AddScoped<IFaqMatcher, FaqMatcher>();
 builder.Services.AddScoped<IRuleMatcher, RuleMatcher>();
+builder.Services.AddScoped<IWebhookSignatureVerifier, WebhookSignatureVerifier>();
+builder.Services.AddScoped<IWebhookResolver, WebhookResolver>();
+
+builder.Services.AddMassTransit(x =>
+{
+    x.AddConsumer<InboundMessageConsumer>();
+
+    x.UsingRabbitMq((context, cfg) =>
+    {
+        var rabbit = builder.Configuration.GetSection("RabbitMQ");
+        cfg.Host(rabbit["Host"] ?? "localhost", h =>
+        {
+            h.Username(rabbit["Username"] ?? "guest");
+            h.Password(rabbit["Password"] ?? "guest");
+        });
+        cfg.ConfigureEndpoints(context);
+    });
+});
 
 builder.Services.AddControllers();
 builder.Services.AddFluentValidationAutoValidation();

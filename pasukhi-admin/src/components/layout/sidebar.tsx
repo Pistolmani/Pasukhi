@@ -1,11 +1,12 @@
 import { NavLink } from 'react-router-dom'
-import { BookOpen, GitBranch, HelpCircle, LayoutDashboard } from 'lucide-react'
+import { BookOpen, GitBranch, HelpCircle, LayoutDashboard, Webhook } from 'lucide-react'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/channels', label: 'Channels', icon: GitBranch },
   { to: '/faqs', label: 'FAQs', icon: HelpCircle },
   { to: '/rules', label: 'Rules', icon: BookOpen },
+  { to: '/webhooks', label: 'Webhooks', icon: Webhook },
 ]
 
 export function Sidebar() {
