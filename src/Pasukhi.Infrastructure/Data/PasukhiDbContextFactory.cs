@@ -9,7 +9,7 @@ public class PasukhiDbContextFactory : IDesignTimeDbContextFactory<PasukhiDbCont
     public PasukhiDbContext CreateDbContext(string[] args)
     {
         var options = new DbContextOptionsBuilder<PasukhiDbContext>()
-            .UseNpgsql("Host=localhost;Database=pasukhi_dev;Username=postgres;Password=postgres")
+            .UseNpgsql("Host=localhost;Port=5433;Database=pasukhi_dev;Username=postgres;Password=postgres")
             .Options;
 
         return new PasukhiDbContext(options, new DesignTimeTenantProvider());

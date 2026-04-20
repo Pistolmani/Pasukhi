@@ -12,6 +12,7 @@ using Pasukhi.Application.Validators;
 using Pasukhi.Domain.Entities;
 using Pasukhi.Infrastructure.Consumers;
 using Pasukhi.Infrastructure.Data;
+using Pasukhi.Infrastructure.Messaging;
 using Pasukhi.Infrastructure.Services;
 using Pasukhi.Infrastructure.Tenant;
 using Serilog;
@@ -69,7 +70,9 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<ITenantProvider, HttpTenantProvider>();
+builder.Services.AddScoped<TenantContext>();
+builder.Services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
+builder.Services.AddScoped<ITenantProvider>(sp => sp.GetRequiredService<TenantContext>());
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IBusinessService, BusinessService>();
 builder.Services.AddScoped<IChannelService, ChannelService>();
@@ -82,7 +85,14 @@ builder.Services.AddScoped<IWebhookResolver, WebhookResolver>();
 
 builder.Services.AddMassTransit(x =>
 {
-    x.AddConsumer<InboundMessageConsumer>();
+    x.AddConsumer<InboundMessageConsumer>(c =>
+    {
+        c.UseMessageRetry(r => r.Exponential(
+            retryLimit: 3,
+            minInterval: TimeSpan.FromSeconds(2),
+            maxInterval: TimeSpan.FromSeconds(30),
+            intervalDelta: TimeSpan.FromSeconds(5)));
+    });
 
     x.UsingRabbitMq((context, cfg) =>
     {
@@ -92,7 +102,13 @@ builder.Services.AddMassTransit(x =>
             h.Username(rabbit["Username"] ?? "guest");
             h.Password(rabbit["Password"] ?? "guest");
         });
-        cfg.ConfigureEndpoints(context);
+
+        cfg.ReceiveEndpoint("inbound-message-queue", e =>
+        {
+            e.PrefetchCount = 16;
+            e.UseConsumeFilter(typeof(TenantContextFilter<>), context);
+            e.ConfigureConsumer<InboundMessageConsumer>(context);
+        });
     });
 });
 
@@ -122,6 +138,7 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<TenantContextMiddleware>();
 app.MapControllers();
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));

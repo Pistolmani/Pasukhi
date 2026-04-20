@@ -1,6 +1,6 @@
 namespace Pasukhi.Application.Messaging;
 
-public record InboundMessageEvent
+public record InboundMessageEvent : ITenantScopedEvent
 {
     public Guid BusinessId { get; init; }
     public Guid ChannelConnectionId { get; init; }

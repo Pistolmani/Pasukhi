@@ -50,6 +50,12 @@ public class PasukhiDbContext : IdentityDbContext<AdminUser>
             .HasIndex(s => new { s.BusinessId, s.Key })
             .IsUnique();
 
+        // Idempotency for inbound webhook replays — a given external message
+        // from a platform can only be persisted once per business.
+        builder.Entity<Message>()
+            .HasIndex(m => new { m.BusinessId, m.ExternalMessageId })
+            .IsUnique();
+
         builder.Entity<RefreshToken>().HasIndex(r => r.Token).IsUnique();
         builder.Entity<RefreshToken>()
             .HasOne(r => r.User)
