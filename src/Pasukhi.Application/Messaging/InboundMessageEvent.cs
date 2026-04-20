@@ -5,6 +5,7 @@ public record InboundMessageEvent : ITenantScopedEvent
     public Guid BusinessId { get; init; }
     public Guid ChannelConnectionId { get; init; }
     public string ChannelType { get; init; } = string.Empty;
+    public string ExternalAccountId { get; init; } = string.Empty;
     public string ExternalSenderId { get; init; } = string.Empty;
     public string? SenderDisplayName { get; init; }
     public string ExternalMessageId { get; init; } = string.Empty;

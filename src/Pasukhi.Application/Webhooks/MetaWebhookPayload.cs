@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Pasukhi.API.Webhooks;
+namespace Pasukhi.Application.Webhooks;
 
 public record MetaWebhookPayload
 {

@@ -55,6 +55,10 @@ public class PasukhiDbContext : IdentityDbContext<AdminUser>
         builder.Entity<Message>()
             .HasIndex(m => new { m.BusinessId, m.ExternalMessageId })
             .IsUnique();
+        builder.Entity<Message>()
+            .HasIndex(m => new { m.BusinessId, m.ReplyToMessageId, m.Source })
+            .IsUnique()
+            .HasFilter("\"ReplyToMessageId\" IS NOT NULL");
 
         builder.Entity<RefreshToken>().HasIndex(r => r.Token).IsUnique();
         builder.Entity<RefreshToken>()

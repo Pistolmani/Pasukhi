@@ -3,12 +3,12 @@ import { Copy, Webhook } from 'lucide-react'
 import { toast } from 'sonner'
 import { channelsApi } from '../../api/channels'
 import { Button } from '../../components/ui/button'
-import { channelTypeLabels, type ChannelConnection } from '../../types/channel'
+import { ChannelType, channelTypeLabels, type ChannelConnection } from '../../types/channel'
 
-const webhookPaths: Record<number, string> = {
-  0: '/api/webhooks/instagram',
-  1: '/api/webhooks/messenger',
-  2: '/api/webhooks/whatsapp',
+const webhookPaths: Record<ChannelType, string> = {
+  [ChannelType.Instagram]: '/api/webhooks/instagram',
+  [ChannelType.Messenger]: '/api/webhooks/messenger',
+  [ChannelType.WhatsApp]: '/api/webhooks/whatsapp',
 }
 
 function copy(text: string) {
@@ -27,7 +27,7 @@ function WebhookCard({ channel, baseUrl }: { channel: ChannelConnection; baseUrl
         <span className="text-base font-semibold">{label}</span>
         {channel.externalAccountName && (
           <span className="text-muted-foreground text-sm">
-            — {channel.externalAccountName}
+            - {channel.externalAccountName}
           </span>
         )}
         <span

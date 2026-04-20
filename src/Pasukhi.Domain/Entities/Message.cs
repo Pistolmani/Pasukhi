@@ -17,6 +17,7 @@ public class Message : TenantEntity
     public Guid? MatchedFaqItemId { get; set; }
     public Guid? MatchedRuleId { get; set; }
     public double? AiConfidenceScore { get; set; }
+    public Guid? ReplyToMessageId { get; set; }
     public string ExternalMessageId { get; set; } = string.Empty;
     public string? ExternalTimestamp { get; set; }
     public DeliveryStatus DeliveryStatus { get; set; } = DeliveryStatus.Pending;

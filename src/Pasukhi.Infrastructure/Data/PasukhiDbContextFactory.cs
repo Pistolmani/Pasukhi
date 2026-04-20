@@ -8,8 +8,11 @@ public class PasukhiDbContextFactory : IDesignTimeDbContextFactory<PasukhiDbCont
 {
     public PasukhiDbContext CreateDbContext(string[] args)
     {
+        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
+            ?? "Host=127.0.0.1;Port=55433;Database=pasukhi_dev;Username=postgres;Password=postgres;SSL Mode=Disable";
+
         var options = new DbContextOptionsBuilder<PasukhiDbContext>()
-            .UseNpgsql("Host=localhost;Port=5433;Database=pasukhi_dev;Username=postgres;Password=postgres")
+            .UseNpgsql(connectionString)
             .Options;
 
         return new PasukhiDbContext(options, new DesignTimeTenantProvider());

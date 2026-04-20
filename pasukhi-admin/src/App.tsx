@@ -3,6 +3,8 @@ import { AppLayout } from './components/layout/app-layout'
 import { AuthGuard } from './components/layout/auth-guard'
 import { LoginPage } from './features/auth/login-page'
 import { ChannelsPage } from './features/channels/channels-page'
+import { ConversationDetailPage } from './features/conversations/conversation-detail-page'
+import { ConversationsPage } from './features/conversations/conversations-page'
 import { DashboardPage } from './features/dashboard/dashboard-page'
 import { FaqsPage } from './features/faqs/faqs-page'
 import { RulesPage } from './features/rules/rules-page'
@@ -16,6 +18,8 @@ function App() {
         <Route element={<AppLayout />}>
           <Route index element={<DashboardPage />} />
           <Route path="channels" element={<ChannelsPage />} />
+          <Route path="conversations" element={<ConversationsPage />} />
+          <Route path="conversations/:id" element={<ConversationDetailPage />} />
           <Route path="faqs" element={<FaqsPage />} />
           <Route path="rules" element={<RulesPage />} />
           <Route path="webhooks" element={<WebhooksPage />} />

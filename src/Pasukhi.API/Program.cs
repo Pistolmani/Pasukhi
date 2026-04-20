@@ -10,6 +10,7 @@ using Pasukhi.API.Middleware;
 using Pasukhi.Application.Interfaces;
 using Pasukhi.Application.Validators;
 using Pasukhi.Domain.Entities;
+using Pasukhi.Infrastructure.Channels;
 using Pasukhi.Infrastructure.Consumers;
 using Pasukhi.Infrastructure.Data;
 using Pasukhi.Infrastructure.Messaging;
@@ -76,12 +77,19 @@ builder.Services.AddScoped<ITenantProvider>(sp => sp.GetRequiredService<TenantCo
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IBusinessService, BusinessService>();
 builder.Services.AddScoped<IChannelService, ChannelService>();
+builder.Services.AddScoped<IConversationService, ConversationService>();
 builder.Services.AddScoped<IFaqService, FaqService>();
 builder.Services.AddScoped<IRuleService, RuleService>();
 builder.Services.AddScoped<IFaqMatcher, FaqMatcher>();
 builder.Services.AddScoped<IRuleMatcher, RuleMatcher>();
 builder.Services.AddScoped<IWebhookSignatureVerifier, WebhookSignatureVerifier>();
 builder.Services.AddScoped<IWebhookResolver, WebhookResolver>();
+builder.Services.AddScoped<IMetaWebhookParser, MetaWebhookParser>();
+
+builder.Services.AddHttpClient<IInstagramChannelProvider, InstagramChannelProvider>();
+builder.Services.AddHttpClient<IMessengerChannelProvider, MessengerChannelProvider>();
+builder.Services.AddHttpClient<IWhatsAppChannelProvider, WhatsAppChannelProvider>();
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
 
 builder.Services.AddMassTransit(x =>
 {
@@ -93,6 +101,7 @@ builder.Services.AddMassTransit(x =>
             maxInterval: TimeSpan.FromSeconds(30),
             intervalDelta: TimeSpan.FromSeconds(5)));
     });
+    x.AddConsumer<OutboundMessageConsumer>();
 
     x.UsingRabbitMq((context, cfg) =>
     {
@@ -108,6 +117,13 @@ builder.Services.AddMassTransit(x =>
             e.PrefetchCount = 16;
             e.UseConsumeFilter(typeof(TenantContextFilter<>), context);
             e.ConfigureConsumer<InboundMessageConsumer>(context);
+        });
+
+        cfg.ReceiveEndpoint("outbound-message-queue", e =>
+        {
+            e.PrefetchCount = 16;
+            e.UseConsumeFilter(typeof(TenantContextFilter<>), context);
+            e.ConfigureConsumer<OutboundMessageConsumer>(context);
         });
     });
 });

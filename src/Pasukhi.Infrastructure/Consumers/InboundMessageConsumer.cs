@@ -1,6 +1,7 @@
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Pasukhi.Application.Interfaces;
 using Pasukhi.Application.Messaging;
 using Pasukhi.Domain.Entities;
 using Pasukhi.Domain.Enums;
@@ -15,18 +16,30 @@ namespace Pasukhi.Infrastructure.Consumers;
 ///   3. Insert Message (Direction=Inbound, Source=Customer).
 ///   4. Bump Conversation.LastMessageAt / UnreadCount.
 ///   5. Get-or-create DailyMetric row for today/channel and increment TotalInbound.
-/// All committed in a single SaveChanges. A DbUpdateException from the unique index
-/// race is treated as a successful no-op (another worker already persisted it).
+///   6. After inbound persistence succeeds, attempt FAQ auto-reply for text messages.
+/// A DbUpdateException from the inbound unique index race is treated as a successful
+/// no-op (another worker already persisted it).
 /// Tenant context is set by TenantContextFilter before Consume runs.
 /// </summary>
 public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
 {
     private readonly PasukhiDbContext _db;
+    private readonly IFaqMatcher _faqMatcher;
+    private readonly IRuleMatcher _ruleMatcher;
+    private readonly IPublishEndpoint _bus;
     private readonly ILogger<InboundMessageConsumer> _logger;
 
-    public InboundMessageConsumer(PasukhiDbContext db, ILogger<InboundMessageConsumer> logger)
+    public InboundMessageConsumer(
+        PasukhiDbContext db,
+        IFaqMatcher faqMatcher,
+        IRuleMatcher ruleMatcher,
+        IPublishEndpoint bus,
+        ILogger<InboundMessageConsumer> logger)
     {
         _db = db;
+        _faqMatcher = faqMatcher;
+        _ruleMatcher = ruleMatcher;
+        _bus = bus;
         _logger = logger;
     }
 
@@ -41,7 +54,7 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
             return;
         }
 
-        // 1. Idempotency — skip if already persisted.
+        // 1. Idempotency - skip if already persisted.
         var alreadyExists = await _db.Messages
             .AnyAsync(m => m.BusinessId == e.BusinessId && m.ExternalMessageId == e.ExternalMessageId, ct);
         if (alreadyExists)
@@ -148,7 +161,7 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
         }
         catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
         {
-            // Lost an idempotency race with another consumer — another worker already
+            // Lost an idempotency race with another consumer - another worker already
             // persisted this message. Drop our pending changes and treat as success.
             _logger.LogInformation(
                 "InboundMessage concurrently persisted by another consumer. ExternalMessageId={ExternalMessageId}",
@@ -163,6 +176,353 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
         _logger.LogInformation(
             "InboundMessage persisted. Business={BusinessId} Channel={ChannelType} Conversation={ConversationId} Message={MessageId}",
             e.BusinessId, channelType, conversation.Id, message.Id);
+
+        if (message.MessageType != MessageType.Text || string.IsNullOrWhiteSpace(message.TextContent))
+        {
+            _logger.LogDebug(
+                "Skipping automation for non-text or empty inbound message {MessageId}.",
+                message.Id);
+            return;
+        }
+
+        if (await TryCreateFaqAutoReplyAsync(e, conversation, message, channelType.Value, ct))
+        {
+            return;
+        }
+
+        await TryApplyRuleAsync(e, conversation, message, channelType.Value, ct);
+    }
+
+    private async Task<bool> TryCreateFaqAutoReplyAsync(
+        InboundMessageEvent inboundEvent,
+        Conversation conversation,
+        Message inboundMessage,
+        ChannelType channelType,
+        CancellationToken ct)
+    {
+        var match = await _faqMatcher.FindBestMatchAsync(
+            inboundMessage.BusinessId,
+            inboundMessage.TextContent!,
+            ct);
+
+        if (match is null)
+        {
+            _logger.LogInformation(
+                "No FAQ match for inbound message {MessageId}. Conversation={ConversationId}",
+                inboundMessage.Id,
+                conversation.Id);
+            return false;
+        }
+
+        return await TryCreateOutboundAutoReplyAsync(
+            inboundEvent,
+            conversation,
+            inboundMessage,
+            channelType,
+            MessageSource.FaqAutoReply,
+            match.FaqItem.Answer,
+            matchedFaqItemId: match.FaqItem.Id,
+            matchedRuleId: null,
+            ct);
+    }
+
+    private async Task<bool> TryApplyRuleAsync(
+        InboundMessageEvent inboundEvent,
+        Conversation conversation,
+        Message inboundMessage,
+        ChannelType channelType,
+        CancellationToken ct)
+    {
+        var matches = await _ruleMatcher.FindMatchesAsync(
+            inboundMessage.BusinessId,
+            inboundMessage.TextContent!,
+            inboundMessage.MessageType,
+            ParseReceivedAt(inboundEvent),
+            ct);
+
+        var match = matches.FirstOrDefault();
+        if (match is null)
+        {
+            _logger.LogInformation(
+                "No automation rule match for inbound message {MessageId}. Conversation={ConversationId}",
+                inboundMessage.Id,
+                conversation.Id);
+            return false;
+        }
+
+        var rule = match.Rule;
+        return rule.ActionType switch
+        {
+            ActionType.SendReply => await TryCreateRuleReplyAsync(
+                inboundEvent,
+                conversation,
+                inboundMessage,
+                channelType,
+                rule,
+                ct),
+            ActionType.Escalate => await CreateRuleEscalationAsync(
+                conversation,
+                inboundMessage,
+                rule,
+                channelType,
+                ct),
+            ActionType.TagConversation => LogUnsupportedTagRule(rule, inboundMessage),
+            _ => LogUnsupportedRuleAction(rule, inboundMessage)
+        };
+    }
+
+    private async Task<bool> TryCreateRuleReplyAsync(
+        InboundMessageEvent inboundEvent,
+        Conversation conversation,
+        Message inboundMessage,
+        ChannelType channelType,
+        AutomationRule rule,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(rule.ActionValue))
+        {
+            _logger.LogWarning(
+                "Automation rule {RuleId} matched inbound message {MessageId}, but SendReply action is empty.",
+                rule.Id,
+                inboundMessage.Id);
+            return true;
+        }
+
+        return await TryCreateOutboundAutoReplyAsync(
+            inboundEvent,
+            conversation,
+            inboundMessage,
+            channelType,
+            MessageSource.RuleAutoReply,
+            rule.ActionValue,
+            matchedFaqItemId: null,
+            matchedRuleId: rule.Id,
+            ct);
+    }
+
+    private async Task<bool> TryCreateOutboundAutoReplyAsync(
+        InboundMessageEvent inboundEvent,
+        Conversation conversation,
+        Message inboundMessage,
+        ChannelType channelType,
+        MessageSource source,
+        string text,
+        Guid? matchedFaqItemId,
+        Guid? matchedRuleId,
+        CancellationToken ct)
+    {
+        var existingReply = await _db.Messages.AnyAsync(m =>
+            m.BusinessId == inboundMessage.BusinessId &&
+            m.ReplyToMessageId == inboundMessage.Id &&
+            m.Source == source, ct);
+        if (existingReply)
+        {
+            _logger.LogDebug(
+                "{Source} auto-reply already exists for inbound message {MessageId}.",
+                source,
+                inboundMessage.Id);
+            return true;
+        }
+
+        var outboundMessageId = Guid.NewGuid();
+        var outboundMessage = new Message
+        {
+            Id = outboundMessageId,
+            BusinessId = inboundMessage.BusinessId,
+            ConversationId = conversation.Id,
+            Direction = MessageDirection.Outbound,
+            Source = source,
+            MessageType = MessageType.Text,
+            TextContent = text,
+            ExternalSenderId = inboundEvent.ExternalAccountId,
+            ExternalMessageId = $"pending:{outboundMessageId}",
+            DeliveryStatus = DeliveryStatus.Pending,
+            MatchedFaqItemId = matchedFaqItemId,
+            MatchedRuleId = matchedRuleId,
+            ReplyToMessageId = inboundMessage.Id
+        };
+
+        _db.Messages.Add(outboundMessage);
+        conversation.LastMessageAt = DateTime.UtcNow;
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var metric = await _db.DailyMetrics.FirstOrDefaultAsync(m =>
+            m.BusinessId == inboundMessage.BusinessId &&
+            m.Date == today &&
+            m.ChannelType == channelType, ct);
+
+        if (metric is null)
+        {
+            metric = new DailyMetric
+            {
+                Id = Guid.NewGuid(),
+                BusinessId = inboundMessage.BusinessId,
+                Date = today,
+                ChannelType = channelType
+            };
+            _db.DailyMetrics.Add(metric);
+        }
+
+        metric.TotalOutbound += 1;
+        if (source == MessageSource.FaqAutoReply)
+        {
+            metric.FaqReplies += 1;
+        }
+        else if (source == MessageSource.RuleAutoReply)
+        {
+            metric.RuleReplies += 1;
+        }
+
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            _logger.LogInformation(
+                "{Source} auto-reply concurrently persisted by another consumer. InboundMessageId={InboundMessageId}",
+                source,
+                inboundMessage.Id);
+            foreach (var entry in _db.ChangeTracker.Entries())
+            {
+                entry.State = EntityState.Detached;
+            }
+            return true;
+        }
+
+        await _bus.Publish(new OutboundMessageReadyEvent
+        {
+            BusinessId = outboundMessage.BusinessId,
+            MessageId = outboundMessage.Id,
+            ConversationId = conversation.Id,
+            ChannelConnectionId = conversation.ChannelConnectionId,
+            ChannelType = channelType.ToString(),
+            ExternalCustomerId = conversation.ExternalCustomerId,
+            TextContent = outboundMessage.TextContent
+        }, ct);
+
+        _logger.LogInformation(
+            "{Source} auto-reply queued. InboundMessage={InboundMessageId} OutboundMessage={OutboundMessageId} Faq={FaqItemId} Rule={RuleId}",
+            source,
+            inboundMessage.Id,
+            outboundMessage.Id,
+            matchedFaqItemId,
+            matchedRuleId);
+
+        return true;
+    }
+
+    private async Task<bool> CreateRuleEscalationAsync(
+        Conversation conversation,
+        Message inboundMessage,
+        AutomationRule rule,
+        ChannelType channelType,
+        CancellationToken ct)
+    {
+        var alreadyEscalated = await _db.Escalations.AnyAsync(e =>
+            e.BusinessId == inboundMessage.BusinessId &&
+            e.ConversationId == conversation.Id &&
+            !e.IsResolved, ct);
+
+        var createdEscalation = false;
+        if (!alreadyEscalated)
+        {
+            _db.Escalations.Add(new Escalation
+            {
+                Id = Guid.NewGuid(),
+                BusinessId = inboundMessage.BusinessId,
+                ConversationId = conversation.Id,
+                Reason = EscalationReason.CustomerRequested,
+                Notes = string.IsNullOrWhiteSpace(rule.ActionValue)
+                    ? $"Escalated by automation rule: {rule.Name}"
+                    : rule.ActionValue
+            });
+            createdEscalation = true;
+        }
+
+        conversation.IsEscalated = true;
+        conversation.Status = ConversationStatus.Escalated;
+
+        if (createdEscalation)
+        {
+            var metric = await GetOrCreateMetricAsync(inboundMessage.BusinessId, channelType, ct);
+            metric.Escalations += 1;
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Automation rule escalated conversation. Rule={RuleId} InboundMessage={InboundMessageId} Conversation={ConversationId}",
+            rule.Id,
+            inboundMessage.Id,
+            conversation.Id);
+
+        return true;
+    }
+
+    private async Task<DailyMetric> GetOrCreateMetricAsync(
+        Guid businessId,
+        ChannelType channelType,
+        CancellationToken ct)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var metric = await _db.DailyMetrics.FirstOrDefaultAsync(m =>
+            m.BusinessId == businessId &&
+            m.Date == today &&
+            m.ChannelType == channelType, ct);
+
+        if (metric is not null)
+        {
+            return metric;
+        }
+
+        metric = new DailyMetric
+        {
+            Id = Guid.NewGuid(),
+            BusinessId = businessId,
+            Date = today,
+            ChannelType = channelType
+        };
+        _db.DailyMetrics.Add(metric);
+        return metric;
+    }
+
+    private bool LogUnsupportedTagRule(AutomationRule rule, Message inboundMessage)
+    {
+        _logger.LogInformation(
+            "Automation rule {RuleId} matched inbound message {MessageId}, but TagConversation is not implemented yet.",
+            rule.Id,
+            inboundMessage.Id);
+        return true;
+    }
+
+    private bool LogUnsupportedRuleAction(AutomationRule rule, Message inboundMessage)
+    {
+        _logger.LogWarning(
+            "Automation rule {RuleId} matched inbound message {MessageId}, but action {ActionType} is unsupported.",
+            rule.Id,
+            inboundMessage.Id,
+            rule.ActionType);
+        return true;
+    }
+
+    private static DateTimeOffset ParseReceivedAt(InboundMessageEvent inboundEvent)
+    {
+        if (long.TryParse(inboundEvent.ExternalTimestamp, out var unixSeconds))
+        {
+            try
+            {
+                return DateTimeOffset.FromUnixTimeSeconds(unixSeconds);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return DateTimeOffset.UtcNow;
+            }
+        }
+
+        return DateTimeOffset.TryParse(inboundEvent.ExternalTimestamp, out var parsed)
+            ? parsed
+            : DateTimeOffset.UtcNow;
     }
 
     private static bool IsUniqueConstraintViolation(DbUpdateException ex)

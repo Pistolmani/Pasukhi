@@ -1,11 +1,20 @@
-export const channelTypes = [0, 1, 2] as const
-export type ChannelType = (typeof channelTypes)[number]
+export enum ChannelType {
+  Instagram = 0,
+  Messenger = 1,
+  WhatsApp = 2,
+}
 
 export const channelTypeLabels: Record<ChannelType, string> = {
-  0: 'Instagram',
-  1: 'Messenger',
-  2: 'WhatsApp',
+  [ChannelType.Instagram]: 'Instagram',
+  [ChannelType.Messenger]: 'Messenger',
+  [ChannelType.WhatsApp]: 'WhatsApp',
 }
+
+export const channelTypes = [
+  ChannelType.Instagram,
+  ChannelType.Messenger,
+  ChannelType.WhatsApp,
+] as const
 
 export interface ChannelConnection {
   id: string
