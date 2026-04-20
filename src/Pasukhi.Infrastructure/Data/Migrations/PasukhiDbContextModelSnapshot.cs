@@ -546,6 +546,9 @@ namespace Pasukhi.Infrastructure.Data.Migrations
                     b.Property<int>("AiReplies")
                         .HasColumnType("integer");
 
+                    b.Property<int>("AiTokensUsed")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("AvgResponseTimeMs")
                         .HasColumnType("integer");
 

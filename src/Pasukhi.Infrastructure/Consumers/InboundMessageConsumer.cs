@@ -1,6 +1,8 @@
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Pasukhi.Application.AI;
 using Pasukhi.Application.Interfaces;
 using Pasukhi.Application.Messaging;
 using Pasukhi.Domain.Entities;
@@ -26,6 +28,10 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
     private readonly PasukhiDbContext _db;
     private readonly IFaqMatcher _faqMatcher;
     private readonly IRuleMatcher _ruleMatcher;
+    private readonly IAiPromptBuilder _aiPromptBuilder;
+    private readonly IAiService _aiService;
+    private readonly IAiSafetyChecker _aiSafetyChecker;
+    private readonly AiOptions _aiOptions;
     private readonly IPublishEndpoint _bus;
     private readonly ILogger<InboundMessageConsumer> _logger;
 
@@ -33,12 +39,20 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
         PasukhiDbContext db,
         IFaqMatcher faqMatcher,
         IRuleMatcher ruleMatcher,
+        IAiPromptBuilder aiPromptBuilder,
+        IAiService aiService,
+        IAiSafetyChecker aiSafetyChecker,
+        IOptions<AiOptions> aiOptions,
         IPublishEndpoint bus,
         ILogger<InboundMessageConsumer> logger)
     {
         _db = db;
         _faqMatcher = faqMatcher;
         _ruleMatcher = ruleMatcher;
+        _aiPromptBuilder = aiPromptBuilder;
+        _aiService = aiService;
+        _aiSafetyChecker = aiSafetyChecker;
+        _aiOptions = aiOptions.Value;
         _bus = bus;
         _logger = logger;
     }
@@ -190,7 +204,12 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
             return;
         }
 
-        await TryApplyRuleAsync(e, conversation, message, channelType.Value, ct);
+        if (await TryApplyRuleAsync(e, conversation, message, channelType.Value, ct))
+        {
+            return;
+        }
+
+        await TryApplyAiAsync(e, conversation, message, channelType.Value, ct);
     }
 
     private async Task<bool> TryCreateFaqAutoReplyAsync(
@@ -223,6 +242,8 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
             match.FaqItem.Answer,
             matchedFaqItemId: match.FaqItem.Id,
             matchedRuleId: null,
+            aiConfidenceScore: null,
+            aiTokensUsed: 0,
             ct);
     }
 
@@ -297,6 +318,117 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
             rule.ActionValue,
             matchedFaqItemId: null,
             matchedRuleId: rule.Id,
+            aiConfidenceScore: null,
+            aiTokensUsed: 0,
+            ct);
+    }
+
+    private async Task<bool> TryApplyAiAsync(
+        InboundMessageEvent inboundEvent,
+        Conversation conversation,
+        Message inboundMessage,
+        ChannelType channelType,
+        CancellationToken ct)
+    {
+        var aiContext = await _aiPromptBuilder.BuildAsync(conversation, inboundMessage, channelType, ct);
+        if (aiContext is null)
+        {
+            return await CreateEscalationAsync(
+                conversation,
+                inboundMessage,
+                channelType,
+                EscalationReason.NoMatch,
+                "No AI prompt is configured for this business.",
+                aiRejectedResponse: null,
+                ct);
+        }
+
+        if (!aiContext.IsAiEnabled)
+        {
+            return await CreateEscalationAsync(
+                conversation,
+                inboundMessage,
+                channelType,
+                EscalationReason.NoMatch,
+                "AI fallback is disabled for this business.",
+                aiRejectedResponse: null,
+                ct);
+        }
+
+        var metric = await GetOrCreateMetricAsync(inboundMessage.BusinessId, channelType, ct);
+        if (metric.AiTokensUsed + _aiOptions.MaxTokens > aiContext.MaxAiTokensPerDay)
+        {
+            return await CreateEscalationAsync(
+                conversation,
+                inboundMessage,
+                channelType,
+                EscalationReason.NoMatch,
+                "AI daily token budget was exceeded.",
+                aiRejectedResponse: null,
+                ct);
+        }
+
+        var result = await _aiService.GenerateReplyAsync(aiContext, ct);
+        if (!result.Success)
+        {
+            return await CreateEscalationAsync(
+                conversation,
+                inboundMessage,
+                channelType,
+                EscalationReason.NoMatch,
+                result.Error ?? "AI fallback failed.",
+                result.ReplyText,
+                ct);
+        }
+
+        if (result.ConfidenceScore < aiContext.AiConfidenceThreshold)
+        {
+            return await CreateEscalationAsync(
+                conversation,
+                inboundMessage,
+                channelType,
+                EscalationReason.LowAiConfidence,
+                $"AI confidence {result.ConfidenceScore:0.00} was below threshold {aiContext.AiConfidenceThreshold:0.00}.",
+                result.ReplyText,
+                ct);
+        }
+
+        if (result.ShouldEscalate)
+        {
+            return await CreateEscalationAsync(
+                conversation,
+                inboundMessage,
+                channelType,
+                EscalationReason.NoMatch,
+                result.EscalationReason ?? "AI requested escalation.",
+                result.ReplyText,
+                ct);
+        }
+
+        var safety = await _aiSafetyChecker.ValidateAsync(aiContext, result, ct);
+        if (!safety.Passed)
+        {
+            return await CreateEscalationAsync(
+                conversation,
+                inboundMessage,
+                channelType,
+                EscalationReason.SafetyCheckFailed,
+                safety.RejectionReason ?? "AI reply failed safety checks.",
+                result.ReplyText,
+                ct);
+        }
+
+        return await TryCreateOutboundAutoReplyAsync(
+            inboundEvent,
+            conversation,
+            inboundMessage,
+            channelType,
+            MessageSource.AiAutoReply,
+            result.ReplyText!,
+            matchedFaqItemId: null,
+            matchedRuleId: null,
+            aiConfidenceScore: result.ConfidenceScore,
+            aiTokensUsed: result.TokensUsed,
             ct);
     }
 
@@ -309,6 +441,8 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
         string text,
         Guid? matchedFaqItemId,
         Guid? matchedRuleId,
+        double? aiConfidenceScore,
+        int aiTokensUsed,
         CancellationToken ct)
     {
         var existingReply = await _db.Messages.AnyAsync(m =>
@@ -339,6 +473,7 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
             DeliveryStatus = DeliveryStatus.Pending,
             MatchedFaqItemId = matchedFaqItemId,
             MatchedRuleId = matchedRuleId,
+            AiConfidenceScore = aiConfidenceScore,
             ReplyToMessageId = inboundMessage.Id
         };
 
@@ -371,6 +506,11 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
         else if (source == MessageSource.RuleAutoReply)
         {
             metric.RuleReplies += 1;
+        }
+        else if (source == MessageSource.AiAutoReply)
+        {
+            metric.AiReplies += 1;
+            metric.AiTokensUsed += Math.Max(0, aiTokensUsed);
         }
 
         try
@@ -419,6 +559,27 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
         ChannelType channelType,
         CancellationToken ct)
     {
+        return await CreateEscalationAsync(
+            conversation,
+            inboundMessage,
+            channelType,
+            EscalationReason.CustomerRequested,
+            string.IsNullOrWhiteSpace(rule.ActionValue)
+                ? $"Escalated by automation rule: {rule.Name}"
+                : rule.ActionValue,
+            aiRejectedResponse: null,
+            ct);
+    }
+
+    private async Task<bool> CreateEscalationAsync(
+        Conversation conversation,
+        Message inboundMessage,
+        ChannelType channelType,
+        EscalationReason reason,
+        string? notes,
+        string? aiRejectedResponse,
+        CancellationToken ct)
+    {
         var alreadyEscalated = await _db.Escalations.AnyAsync(e =>
             e.BusinessId == inboundMessage.BusinessId &&
             e.ConversationId == conversation.Id &&
@@ -432,10 +593,9 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
                 Id = Guid.NewGuid(),
                 BusinessId = inboundMessage.BusinessId,
                 ConversationId = conversation.Id,
-                Reason = EscalationReason.CustomerRequested,
-                Notes = string.IsNullOrWhiteSpace(rule.ActionValue)
-                    ? $"Escalated by automation rule: {rule.Name}"
-                    : rule.ActionValue
+                Reason = reason,
+                Notes = notes,
+                AiRejectedResponse = aiRejectedResponse
             });
             createdEscalation = true;
         }
@@ -452,8 +612,8 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
         await _db.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "Automation rule escalated conversation. Rule={RuleId} InboundMessage={InboundMessageId} Conversation={ConversationId}",
-            rule.Id,
+            "Conversation escalated. Reason={Reason} InboundMessage={InboundMessageId} Conversation={ConversationId}",
+            reason,
             inboundMessage.Id,
             conversation.Id);
 

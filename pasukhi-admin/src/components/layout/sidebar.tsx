@@ -1,12 +1,14 @@
 import { NavLink } from 'react-router-dom'
-import { BookOpen, GitBranch, HelpCircle, LayoutDashboard, MessageCircle, Webhook } from 'lucide-react'
+import { AlertTriangle, BookOpen, Bot, GitBranch, HelpCircle, LayoutDashboard, MessageCircle, Webhook } from 'lucide-react'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/channels', label: 'Channels', icon: GitBranch },
   { to: '/conversations', label: 'Conversations', icon: MessageCircle },
+  { to: '/escalations', label: 'Escalations', icon: AlertTriangle },
   { to: '/faqs', label: 'FAQs', icon: HelpCircle },
   { to: '/rules', label: 'Rules', icon: BookOpen },
+  { to: '/ai', label: 'AI Settings', icon: Bot },
   { to: '/webhooks', label: 'Webhooks', icon: Webhook },
 ]
 

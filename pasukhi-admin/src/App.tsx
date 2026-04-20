@@ -1,7 +1,10 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './components/layout/app-layout'
 import { AuthGuard } from './components/layout/auth-guard'
+import { AiSettingsPage } from './features/ai/ai-settings-page'
 import { LoginPage } from './features/auth/login-page'
+import { EscalationDetailPage } from './features/escalations/escalation-detail-page'
+import { EscalationsPage } from './features/escalations/escalations-page'
 import { ChannelsPage } from './features/channels/channels-page'
 import { ConversationDetailPage } from './features/conversations/conversation-detail-page'
 import { ConversationsPage } from './features/conversations/conversations-page'
@@ -20,8 +23,11 @@ function App() {
           <Route path="channels" element={<ChannelsPage />} />
           <Route path="conversations" element={<ConversationsPage />} />
           <Route path="conversations/:id" element={<ConversationDetailPage />} />
+          <Route path="escalations" element={<EscalationsPage />} />
+          <Route path="escalations/:id" element={<EscalationDetailPage />} />
           <Route path="faqs" element={<FaqsPage />} />
           <Route path="rules" element={<RulesPage />} />
+          <Route path="ai" element={<AiSettingsPage />} />
           <Route path="webhooks" element={<WebhooksPage />} />
         </Route>
       </Route>

@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Pasukhi.API.Middleware;
+using Pasukhi.Application.AI;
 using Pasukhi.Application.Interfaces;
 using Pasukhi.Application.Validators;
 using Pasukhi.Domain.Entities;
@@ -82,6 +83,11 @@ builder.Services.AddScoped<IFaqService, FaqService>();
 builder.Services.AddScoped<IRuleService, RuleService>();
 builder.Services.AddScoped<IFaqMatcher, FaqMatcher>();
 builder.Services.AddScoped<IRuleMatcher, RuleMatcher>();
+builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("AI"));
+builder.Services.AddScoped<IAiPromptBuilder, AiPromptBuilder>();
+builder.Services.AddScoped<IAiSafetyChecker, AiSafetyChecker>();
+builder.Services.AddScoped<IBusinessPromptService, BusinessPromptService>();
+builder.Services.AddScoped<IEscalationService, EscalationService>();
 builder.Services.AddScoped<IWebhookSignatureVerifier, WebhookSignatureVerifier>();
 builder.Services.AddScoped<IWebhookResolver, WebhookResolver>();
 builder.Services.AddScoped<IMetaWebhookParser, MetaWebhookParser>();
@@ -90,6 +96,17 @@ builder.Services.AddHttpClient<IInstagramChannelProvider, InstagramChannelProvid
 builder.Services.AddHttpClient<IMessengerChannelProvider, MessengerChannelProvider>();
 builder.Services.AddHttpClient<IWhatsAppChannelProvider, WhatsAppChannelProvider>();
 builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+
+// AI provider selection based on configuration
+var aiProvider = builder.Configuration.GetValue<string>("AI:Provider")?.ToLowerInvariant() ?? "gemini";
+if (aiProvider == "gemini" || aiProvider == "google")
+{
+    builder.Services.AddHttpClient<IAiService, GeminiService>();
+}
+else
+{
+    builder.Services.AddHttpClient<IAiService, OpenAiService>();
+}
 
 builder.Services.AddMassTransit(x =>
 {
