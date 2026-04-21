@@ -11,6 +11,7 @@ import { ConversationsPage } from './features/conversations/conversations-page'
 import { DashboardPage } from './features/dashboard/dashboard-page'
 import { FaqsPage } from './features/faqs/faqs-page'
 import { RulesPage } from './features/rules/rules-page'
+import { SettingsPage } from './features/settings/settings-page'
 import { WebhooksPage } from './features/webhooks/webhooks-page'
 
 function App() {
@@ -28,6 +29,7 @@ function App() {
           <Route path="faqs" element={<FaqsPage />} />
           <Route path="rules" element={<RulesPage />} />
           <Route path="ai" element={<AiSettingsPage />} />
+          <Route path="settings" element={<SettingsPage />} />
           <Route path="webhooks" element={<WebhooksPage />} />
         </Route>
       </Route>

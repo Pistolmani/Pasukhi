@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Pasukhi.Application.AI;
+using Pasukhi.Application.DTOs.Settings;
 using Pasukhi.Application.Interfaces;
 using Pasukhi.Application.Messaging;
 using Pasukhi.Domain.Entities;
@@ -25,9 +26,22 @@ namespace Pasukhi.Infrastructure.Consumers;
 /// </summary>
 public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
 {
+    private static readonly IReadOnlyDictionary<string, string> IanaToWindowsTimeZoneIds =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Asia/Tbilisi"] = "Georgian Standard Time",
+            ["Etc/UTC"] = "UTC",
+            ["UTC"] = "UTC",
+            ["Europe/Berlin"] = "W. Europe Standard Time",
+            ["Europe/London"] = "GMT Standard Time",
+            ["America/New_York"] = "Eastern Standard Time",
+            ["America/Los_Angeles"] = "Pacific Standard Time"
+        };
+
     private readonly PasukhiDbContext _db;
     private readonly IFaqMatcher _faqMatcher;
     private readonly IRuleMatcher _ruleMatcher;
+    private readonly ISettingsService _settingsService;
     private readonly IAiPromptBuilder _aiPromptBuilder;
     private readonly IAiService _aiService;
     private readonly IAiSafetyChecker _aiSafetyChecker;
@@ -39,6 +53,7 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
         PasukhiDbContext db,
         IFaqMatcher faqMatcher,
         IRuleMatcher ruleMatcher,
+        ISettingsService settingsService,
         IAiPromptBuilder aiPromptBuilder,
         IAiService aiService,
         IAiSafetyChecker aiSafetyChecker,
@@ -49,6 +64,7 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
         _db = db;
         _faqMatcher = faqMatcher;
         _ruleMatcher = ruleMatcher;
+        _settingsService = settingsService;
         _aiPromptBuilder = aiPromptBuilder;
         _aiService = aiService;
         _aiSafetyChecker = aiSafetyChecker;
@@ -195,6 +211,23 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
         {
             _logger.LogDebug(
                 "Skipping automation for non-text or empty inbound message {MessageId}.",
+                message.Id);
+            return;
+        }
+
+        var settings = await _settingsService.GetAsync(ct);
+        if (!settings.AutoReplyEnabled)
+        {
+            _logger.LogInformation(
+                "Skipping automation for inbound message {MessageId}: auto-reply is disabled.",
+                message.Id);
+            return;
+        }
+
+        if (settings.WorkingHoursEnabled && !IsWithinWorkingHours(settings, DateTime.UtcNow))
+        {
+            _logger.LogInformation(
+                "Skipping automation for inbound message {MessageId}: outside working hours.",
                 message.Id);
             return;
         }
@@ -683,6 +716,54 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
         return DateTimeOffset.TryParse(inboundEvent.ExternalTimestamp, out var parsed)
             ? parsed
             : DateTimeOffset.UtcNow;
+    }
+
+    private static bool IsWithinWorkingHours(
+        BusinessSettingsDto settings,
+        DateTime utcNow)
+    {
+        if (!TimeOnly.TryParse(settings.WorkingHoursStart, out var start) ||
+            !TimeOnly.TryParse(settings.WorkingHoursEnd, out var end))
+        {
+            return true;
+        }
+
+        var timezone = ResolveTimezone(settings.Timezone);
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utcNow, DateTimeKind.Utc), timezone);
+        var current = TimeOnly.FromDateTime(localNow);
+
+        return start <= end
+            ? current >= start && current <= end
+            : current >= start || current <= end;
+    }
+
+    private static TimeZoneInfo ResolveTimezone(string timezone)
+    {
+        if (string.IsNullOrWhiteSpace(timezone))
+        {
+            return TimeZoneInfo.Utc;
+        }
+
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(timezone);
+        }
+        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            if (IanaToWindowsTimeZoneIds.TryGetValue(timezone, out var windowsTimeZoneId))
+            {
+                try
+                {
+                    return TimeZoneInfo.FindSystemTimeZoneById(windowsTimeZoneId);
+                }
+                catch (Exception fallbackEx) when (fallbackEx is TimeZoneNotFoundException or InvalidTimeZoneException)
+                {
+                    return TimeZoneInfo.Utc;
+                }
+            }
+        }
+
+        return TimeZoneInfo.Utc;
     }
 
     private static bool IsUniqueConstraintViolation(DbUpdateException ex)

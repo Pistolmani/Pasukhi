@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pasukhi.Application.AI;
+using Pasukhi.Application.DTOs.Settings;
 using Pasukhi.Application.Interfaces;
 using Pasukhi.Application.Messaging;
 using Pasukhi.Domain.Entities;
@@ -30,6 +31,7 @@ public class InboundMessageConsumerTests
         services.AddDbContext<PasukhiDbContext>(o => o.UseInMemoryDatabase(dbName));
         services.AddScoped<IFaqMatcher, FaqMatcher>();
         services.AddScoped<IRuleMatcher, RuleMatcher>();
+        services.AddScoped<ISettingsService, SettingsService>();
         services.Configure<AiOptions>(options =>
         {
             options.Provider = "OpenAI";
@@ -162,6 +164,25 @@ public class InboundMessageConsumerTests
         db.BusinessPrompts.Add(prompt);
         await db.SaveChangesAsync();
         return prompt;
+    }
+
+    private static async Task SeedBusinessSettingAsync(
+        IServiceProvider provider,
+        Guid businessId,
+        string key,
+        string value)
+    {
+        using var scope = provider.CreateScope();
+        scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
+        var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
+        db.BusinessSettings.Add(new BusinessSetting
+        {
+            Id = Guid.NewGuid(),
+            BusinessId = businessId,
+            Key = key,
+            Value = value
+        });
+        await db.SaveChangesAsync();
     }
 
     private static InboundMessageEvent NewEvent(
@@ -390,6 +411,97 @@ public class InboundMessageConsumerTests
             Assert.Equal(MessageSource.FaqAutoReply, outbound.Source);
             Assert.Equal("FAQ wins before AI", outbound.TextContent);
             Assert.Equal(0, provider.GetRequiredService<FakeAiService>().CallCount);
+        }
+    }
+
+    [Fact]
+    public async Task Auto_reply_disabled_persists_inbound_only_and_skips_automation()
+    {
+        var businessId = Guid.NewGuid();
+        var channelId = Guid.NewGuid();
+        var (harness, provider) = await CreateHarnessAsync(nameof(Auto_reply_disabled_persists_inbound_only_and_skips_automation));
+        await using (provider)
+        {
+            await SeedChannelAsync(provider, businessId, channelId);
+            var faq = await SeedFaqAsync(provider, businessId, "hello", "Hi from FAQ");
+            await SeedBusinessSettingAsync(provider, businessId, SettingKeys.AutoReplyEnabled, "False");
+
+            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-auto-off", textContent: "hello"));
+            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+
+            using var scope = provider.CreateScope();
+            scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
+            var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
+
+            Assert.Equal(1, await db.Messages.CountAsync());
+            Assert.False(await harness.Published.Any<OutboundMessageReadyEvent>());
+            Assert.Equal(0, provider.GetRequiredService<FakeAiService>().CallCount);
+
+            var savedFaq = await db.FaqItems.SingleAsync(f => f.Id == faq.Id);
+            Assert.Equal(0, savedFaq.MatchCount);
+        }
+    }
+
+    [Fact]
+    public async Task Outside_working_hours_persists_inbound_only_and_skips_automation()
+    {
+        var businessId = Guid.NewGuid();
+        var channelId = Guid.NewGuid();
+        var (harness, provider) = await CreateHarnessAsync(nameof(Outside_working_hours_persists_inbound_only_and_skips_automation));
+        await using (provider)
+        {
+            await SeedChannelAsync(provider, businessId, channelId);
+            var faq = await SeedFaqAsync(provider, businessId, "hello", "Hi from FAQ");
+            var utcNow = DateTime.UtcNow;
+            await SeedBusinessSettingAsync(provider, businessId, SettingKeys.WorkingHoursEnabled, "True");
+            await SeedBusinessSettingAsync(provider, businessId, SettingKeys.WorkingHoursStart, utcNow.AddHours(1).ToString("HH:mm"));
+            await SeedBusinessSettingAsync(provider, businessId, SettingKeys.WorkingHoursEnd, utcNow.AddHours(2).ToString("HH:mm"));
+            await SeedBusinessSettingAsync(provider, businessId, SettingKeys.Timezone, "UTC");
+
+            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-outside-hours", textContent: "hello"));
+            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+
+            using var scope = provider.CreateScope();
+            scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
+            var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
+
+            Assert.Equal(1, await db.Messages.CountAsync());
+            Assert.False(await harness.Published.Any<OutboundMessageReadyEvent>());
+            Assert.Equal(0, provider.GetRequiredService<FakeAiService>().CallCount);
+
+            var savedFaq = await db.FaqItems.SingleAsync(f => f.Id == faq.Id);
+            Assert.Equal(0, savedFaq.MatchCount);
+        }
+    }
+
+    [Fact]
+    public async Task Working_hours_with_default_iana_timezone_allows_automation_inside_window()
+    {
+        var businessId = Guid.NewGuid();
+        var channelId = Guid.NewGuid();
+        var (harness, provider) = await CreateHarnessAsync(nameof(Working_hours_with_default_iana_timezone_allows_automation_inside_window));
+        await using (provider)
+        {
+            await SeedChannelAsync(provider, businessId, channelId);
+            await SeedFaqAsync(provider, businessId, "hello", "Hi from FAQ");
+
+            var tbilisiNow = DateTime.UtcNow.AddHours(4);
+            await SeedBusinessSettingAsync(provider, businessId, SettingKeys.WorkingHoursEnabled, "True");
+            await SeedBusinessSettingAsync(provider, businessId, SettingKeys.WorkingHoursStart, tbilisiNow.AddMinutes(-30).ToString("HH:mm"));
+            await SeedBusinessSettingAsync(provider, businessId, SettingKeys.WorkingHoursEnd, tbilisiNow.AddMinutes(30).ToString("HH:mm"));
+            await SeedBusinessSettingAsync(provider, businessId, SettingKeys.Timezone, "Asia/Tbilisi");
+
+            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-inside-iana-hours", textContent: "hello"));
+            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            Assert.True(await harness.Published.Any<OutboundMessageReadyEvent>());
+
+            using var scope = provider.CreateScope();
+            scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
+            var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
+
+            var outbound = await db.Messages.SingleAsync(m => m.Direction == MessageDirection.Outbound);
+            Assert.Equal(MessageSource.FaqAutoReply, outbound.Source);
+            Assert.Equal("Hi from FAQ", outbound.TextContent);
         }
     }
 
