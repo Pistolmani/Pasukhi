@@ -88,6 +88,8 @@ builder.Services.AddScoped<IAiPromptBuilder, AiPromptBuilder>();
 builder.Services.AddScoped<IAiSafetyChecker, AiSafetyChecker>();
 builder.Services.AddScoped<IBusinessPromptService, BusinessPromptService>();
 builder.Services.AddScoped<IEscalationService, EscalationService>();
+builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
+builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<IWebhookSignatureVerifier, WebhookSignatureVerifier>();
 builder.Services.AddScoped<IWebhookResolver, WebhookResolver>();
 builder.Services.AddScoped<IMetaWebhookParser, MetaWebhookParser>();
@@ -123,11 +125,19 @@ builder.Services.AddMassTransit(x =>
     x.UsingRabbitMq((context, cfg) =>
     {
         var rabbit = builder.Configuration.GetSection("RabbitMQ");
-        cfg.Host(rabbit["Host"] ?? "localhost", h =>
+        var rabbitUrl = rabbit["Url"];
+        if (!string.IsNullOrEmpty(rabbitUrl))
         {
-            h.Username(rabbit["Username"] ?? "guest");
-            h.Password(rabbit["Password"] ?? "guest");
-        });
+            cfg.Host(new Uri(rabbitUrl));
+        }
+        else
+        {
+            cfg.Host(rabbit["Host"] ?? "localhost", h =>
+            {
+                h.Username(rabbit["Username"] ?? "guest");
+                h.Password(rabbit["Password"] ?? "guest");
+            });
+        }
 
         cfg.ReceiveEndpoint("inbound-message-queue", e =>
         {
