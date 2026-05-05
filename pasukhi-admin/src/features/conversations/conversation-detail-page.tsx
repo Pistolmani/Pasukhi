@@ -46,9 +46,11 @@ export function ConversationDetailPage() {
     onError: () => toast.error('Could not send reply'),
   })
 
+  const latestPageMessageCount = conversationQuery.data?.pages[0]?.messages.length ?? 0
+
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [conversationQuery.data?.pages[0]?.messages.length])
+  }, [latestPageMessageCount])
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()

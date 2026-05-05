@@ -6,9 +6,8 @@ import { Button } from '../../components/ui/button'
 import { ChannelType, channelTypeLabels, type ChannelConnection } from '../../types/channel'
 
 const webhookPaths: Record<ChannelType, string> = {
-  [ChannelType.Instagram]: '/api/webhooks/instagram',
-  [ChannelType.Messenger]: '/api/webhooks/messenger',
-  [ChannelType.WhatsApp]: '/api/webhooks/whatsapp',
+  [ChannelType.Instagram]: '/api/webhook/instagram',
+  [ChannelType.Messenger]: '/api/webhook/messenger',
 }
 
 function copy(text: string) {

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { FormEvent } from 'react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { settingsApi } from '../../api/settings'
 import { Button } from '../../components/ui/button'
@@ -18,23 +18,24 @@ const DEFAULTS: UpdateBusinessSettingsRequest = {
 
 export function SettingsPage() {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState<UpdateBusinessSettingsRequest>(DEFAULTS)
+  const [draft, setDraft] = useState<Partial<UpdateBusinessSettingsRequest>>({})
 
   const settingsQuery = useQuery({
     queryKey: ['settings'],
     queryFn: settingsApi.get,
   })
 
-  useEffect(() => {
-    if (settingsQuery.data) {
-      setForm(settingsQuery.data)
-    }
-  }, [settingsQuery.data])
+  const form: UpdateBusinessSettingsRequest = {
+    ...DEFAULTS,
+    ...(settingsQuery.data ?? {}),
+    ...draft,
+  }
 
   const saveMutation = useMutation({
     mutationFn: settingsApi.update,
     onSuccess: async (data) => {
-      setForm(data)
+      queryClient.setQueryData(['settings'], data)
+      setDraft({})
       await queryClient.invalidateQueries({ queryKey: ['settings'] })
       toast.success('Settings saved')
     },
@@ -49,7 +50,7 @@ export function SettingsPage() {
   const set = <K extends keyof UpdateBusinessSettingsRequest>(
     key: K,
     value: UpdateBusinessSettingsRequest[K],
-  ) => setForm((prev) => ({ ...prev, [key]: value }))
+  ) => setDraft((prev) => ({ ...prev, [key]: value }))
 
   return (
     <div className="space-y-6">

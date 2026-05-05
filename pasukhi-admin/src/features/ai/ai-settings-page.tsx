@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { FormEvent } from 'react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { aiApi } from '../../api/ai'
 import { Button } from '../../components/ui/button'
@@ -21,7 +21,7 @@ const DEFAULTS: UpsertBusinessPromptRequest = {
 
 export function AiSettingsPage() {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState<UpsertBusinessPromptRequest>(DEFAULTS)
+  const [draft, setDraft] = useState<Partial<UpsertBusinessPromptRequest>>({})
 
   const promptQuery = useQuery({
     queryKey: ['ai-prompt'],
@@ -35,9 +35,8 @@ export function AiSettingsPage() {
     },
   })
 
-  useEffect(() => {
-    if (promptQuery.data) {
-      setForm({
+  const savedForm: UpsertBusinessPromptRequest = promptQuery.data
+    ? {
         isAiEnabled: promptQuery.data.isAiEnabled,
         systemPrompt: promptQuery.data.systemPrompt,
         toneDescription: promptQuery.data.toneDescription,
@@ -45,13 +44,18 @@ export function AiSettingsPage() {
         maxAiTokensPerDay: promptQuery.data.maxAiTokensPerDay,
         aiConfidenceThreshold: promptQuery.data.aiConfidenceThreshold,
         faqConfidenceThreshold: promptQuery.data.faqConfidenceThreshold,
-      })
-    }
-  }, [promptQuery.data])
+      }
+    : DEFAULTS
+
+  const form: UpsertBusinessPromptRequest = {
+    ...savedForm,
+    ...draft,
+  }
 
   const saveMutation = useMutation({
     mutationFn: aiApi.upsertPrompt,
     onSuccess: async () => {
+      setDraft({})
       await queryClient.invalidateQueries({ queryKey: ['ai-prompt'] })
       toast.success('AI settings saved')
     },
@@ -66,7 +70,7 @@ export function AiSettingsPage() {
   const set = <K extends keyof UpsertBusinessPromptRequest>(
     key: K,
     value: UpsertBusinessPromptRequest[K],
-  ) => setForm((prev) => ({ ...prev, [key]: value }))
+  ) => setDraft((prev) => ({ ...prev, [key]: value }))
 
   return (
     <div className="space-y-6">

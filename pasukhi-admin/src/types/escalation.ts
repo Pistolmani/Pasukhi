@@ -1,13 +1,15 @@
 import type { ChannelType } from './channel'
 import type { Message } from './conversation'
 
-export enum EscalationReason {
-  NoMatch = 0,
-  LowAiConfidence = 1,
-  SafetyCheckFailed = 2,
-  CustomerRequested = 3,
-  OperatorTriggered = 4,
-}
+export const EscalationReason = {
+  NoMatch: 0,
+  LowAiConfidence: 1,
+  SafetyCheckFailed: 2,
+  CustomerRequested: 3,
+  OperatorTriggered: 4,
+} as const
+
+export type EscalationReason = (typeof EscalationReason)[keyof typeof EscalationReason]
 
 export const escalationReasonLabels: Record<EscalationReason, string> = {
   [EscalationReason.NoMatch]: 'No match',

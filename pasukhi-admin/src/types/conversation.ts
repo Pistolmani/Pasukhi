@@ -1,25 +1,31 @@
-import { ChannelType } from './channel'
+import type { ChannelType } from './channel'
 export { ChannelType, channelTypeLabels } from './channel'
 
-export enum ConversationStatus {
-  Active = 0,
-  Escalated = 1,
-  Resolved = 2,
-  Archived = 3,
-}
+export const ConversationStatus = {
+  Active: 0,
+  Escalated: 1,
+  Resolved: 2,
+  Archived: 3,
+} as const
 
-export enum MessageDirection {
-  Inbound = 0,
-  Outbound = 1,
-}
+export type ConversationStatus = (typeof ConversationStatus)[keyof typeof ConversationStatus]
 
-export enum DeliveryStatus {
-  Pending = 0,
-  Sent = 1,
-  Delivered = 2,
-  Read = 3,
-  Failed = 4,
-}
+export const MessageDirection = {
+  Inbound: 0,
+  Outbound: 1,
+} as const
+
+export type MessageDirection = (typeof MessageDirection)[keyof typeof MessageDirection]
+
+export const DeliveryStatus = {
+  Pending: 0,
+  Sent: 1,
+  Delivered: 2,
+  Read: 3,
+  Failed: 4,
+} as const
+
+export type DeliveryStatus = (typeof DeliveryStatus)[keyof typeof DeliveryStatus]
 
 export type ConversationListItem = {
   id: string
