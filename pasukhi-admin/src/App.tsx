@@ -1,7 +1,9 @@
 import { lazy, Suspense } from 'react'
+import type { ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './components/layout/app-layout'
 import { AuthGuard } from './components/layout/auth-guard'
+import { useAuthStore } from './stores/auth-store'
 
 const AiSettingsPage = lazy(() =>
   import('./features/ai/ai-settings-page').then((module) => ({
@@ -16,6 +18,11 @@ const BotReadinessPage = lazy(() =>
 const ChannelsPage = lazy(() =>
   import('./features/channels/channels-page').then((module) => ({
     default: module.ChannelsPage,
+  })),
+)
+const BusinessesPage = lazy(() =>
+  import('./features/businesses/businesses-page').then((module) => ({
+    default: module.BusinessesPage,
   })),
 )
 const ConversationDetailPage = lazy(() =>
@@ -77,23 +84,118 @@ function App() {
         <Route element={<AuthGuard />}>
           <Route element={<AppLayout />}>
             <Route index element={<DashboardPage />} />
-            <Route path="channels" element={<ChannelsPage />} />
-            <Route path="conversations" element={<ConversationsPage />} />
-            <Route path="conversations/:id" element={<ConversationDetailPage />} />
-            <Route path="escalations" element={<EscalationsPage />} />
-            <Route path="escalations/:id" element={<EscalationDetailPage />} />
-            <Route path="faqs" element={<FaqsPage />} />
-            <Route path="rules" element={<RulesPage />} />
-            <Route path="bot-readiness" element={<BotReadinessPage />} />
-            <Route path="ai" element={<AiSettingsPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="webhooks" element={<WebhooksPage />} />
+            <Route
+              path="businesses"
+              element={
+                <RoleRoute role="SuperAdmin">
+                  <BusinessesPage />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="channels"
+              element={
+                <BusinessRoute>
+                  <ChannelsPage />
+                </BusinessRoute>
+              }
+            />
+            <Route
+              path="conversations"
+              element={
+                <BusinessRoute>
+                  <ConversationsPage />
+                </BusinessRoute>
+              }
+            />
+            <Route
+              path="conversations/:id"
+              element={
+                <BusinessRoute>
+                  <ConversationDetailPage />
+                </BusinessRoute>
+              }
+            />
+            <Route
+              path="escalations"
+              element={
+                <BusinessRoute>
+                  <EscalationsPage />
+                </BusinessRoute>
+              }
+            />
+            <Route
+              path="escalations/:id"
+              element={
+                <BusinessRoute>
+                  <EscalationDetailPage />
+                </BusinessRoute>
+              }
+            />
+            <Route
+              path="faqs"
+              element={
+                <BusinessRoute>
+                  <FaqsPage />
+                </BusinessRoute>
+              }
+            />
+            <Route
+              path="rules"
+              element={
+                <BusinessRoute>
+                  <RulesPage />
+                </BusinessRoute>
+              }
+            />
+            <Route
+              path="bot-readiness"
+              element={
+                <BusinessRoute>
+                  <BotReadinessPage />
+                </BusinessRoute>
+              }
+            />
+            <Route
+              path="ai"
+              element={
+                <BusinessRoute>
+                  <AiSettingsPage />
+                </BusinessRoute>
+              }
+            />
+            <Route
+              path="settings"
+              element={
+                <BusinessRoute>
+                  <SettingsPage />
+                </BusinessRoute>
+              }
+            />
+            <Route
+              path="webhooks"
+              element={
+                <BusinessRoute>
+                  <WebhooksPage />
+                </BusinessRoute>
+              }
+            />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
   )
+}
+
+function RoleRoute({ role, children }: { role: string; children: ReactNode }) {
+  const user = useAuthStore((state) => state.user)
+  return user?.role === role ? children : <Navigate to="/" replace />
+}
+
+function BusinessRoute({ children }: { children: ReactNode }) {
+  const user = useAuthStore((state) => state.user)
+  return user?.businessId ? children : <Navigate to="/" replace />
 }
 
 export default App

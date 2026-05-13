@@ -1,17 +1,31 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Bot, Clock, Download, GitBranch, MessageCircle, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, Bot, Building2, Clock, Download, GitBranch, MessageCircle, SlidersHorizontal } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { analyticsApi } from '../../api/analytics'
+import { businessesApi } from '../../api/businesses'
 import { Button } from '../../components/ui/button'
+import { useAuthStore } from '../../stores/auth-store'
 import { channelTypeLabels, channelTypes } from '../../types/channel'
 import type { DailyBreakdown } from '../../types/analytics'
 
 const ranges = [7, 30] as const
 
 export function DashboardPage() {
+  const user = useAuthStore((state) => state.user)
+  const isSuperAdmin = user?.role === 'SuperAdmin'
+
+  if (isSuperAdmin) {
+    return <PlatformDashboard />
+  }
+
+  return <OperatorDashboard />
+}
+
+function OperatorDashboard() {
   const [days, setDays] = useState<(typeof ranges)[number]>(7)
   const navigate = useNavigate()
+  const user = useAuthStore((state) => state.user)
   const dashboardQuery = useQuery({
     queryKey: ['dashboard', days],
     queryFn: () => analyticsApi.getDashboard(days),
@@ -19,17 +33,20 @@ export function DashboardPage() {
 
   const stats = dashboardQuery.data
   const autoReplies = (stats?.faqReplies ?? 0) + (stats?.ruleReplies ?? 0) + (stats?.aiReplies ?? 0)
+  const today = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())
+  const firstName = user?.firstName || 'there'
+  const businessName = user?.businessName || 'your business'
 
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Wednesday · May 13
+            {today}
           </div>
-          <h2 className="mt-1 text-[26px] font-semibold tracking-tight text-slate-950">გამარჯობა, Nika</h2>
+          <h2 className="mt-1 text-[26px] font-semibold tracking-tight text-slate-950">Hello, {firstName}</h2>
           <p className="mt-1 text-[13.5px] text-slate-500">
-            Here&apos;s how <span className="font-medium text-slate-900">Khinkali House</span>&apos;s inbox is doing today.
+            Here&apos;s how <span className="font-medium text-slate-900">{businessName}</span>&apos;s inbox is doing today.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -178,6 +195,76 @@ export function DashboardPage() {
                 <tr>
                   <td colSpan={6} className="px-5 py-10 text-center text-slate-500">
                     No daily activity yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function PlatformDashboard() {
+  const businessesQuery = useQuery({
+    queryKey: ['businesses'],
+    queryFn: businessesApi.list,
+  })
+
+  const businesses = businessesQuery.data ?? []
+  const activeBusinesses = businesses.filter((business) => business.isActive).length
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          Platform overview
+        </div>
+        <h2 className="mt-1 text-[26px] font-semibold tracking-tight text-slate-950">Super admin dashboard</h2>
+        <p className="mt-1 text-[13.5px] text-slate-500">
+          Manage tenants and platform-level access.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          label="Businesses"
+          value={businesses.length}
+          sub={`${formatNumber(activeBusinesses)} active`}
+          icon={Building2}
+          loading={businessesQuery.isLoading}
+        />
+      </div>
+
+      <section className="card-shadow overflow-hidden rounded-2xl border border-border bg-white">
+        <div className="flex items-center justify-between p-5 pb-3">
+          <div>
+            <h3 className="text-[13px] font-semibold text-slate-950">Businesses</h3>
+            <p className="text-[12px] text-slate-500">Tenants currently registered in Pasukhi.</p>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-[13px]">
+            <thead className="border-y border-border bg-muted/50 text-[11px] uppercase tracking-[0.14em] text-slate-500">
+              <tr>
+                <th className="px-5 py-3 font-semibold">Name</th>
+                <th className="px-5 py-3 font-semibold">Slug</th>
+                <th className="px-5 py-3 font-semibold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {businesses.slice(0, 6).map((business) => (
+                <tr key={business.id} className="border-b border-border/70 last:border-0">
+                  <td className="px-5 py-3 font-medium text-slate-900">{business.name}</td>
+                  <td className="px-5 py-3 text-slate-600">{business.slug}</td>
+                  <td className="px-5 py-3 text-slate-600">{business.isActive ? 'Active' : 'Inactive'}</td>
+                </tr>
+              ))}
+              {!businessesQuery.isLoading && businesses.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-5 py-10 text-center text-slate-500">
+                    No businesses found.
                   </td>
                 </tr>
               )}

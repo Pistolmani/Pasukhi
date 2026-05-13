@@ -39,7 +39,7 @@ public class AuthService : IAuthService
         var rawRefreshToken = await CreateRefreshTokenAsync(user.Id);
         await _db.SaveChangesAsync();
 
-        return new AuthResponse(accessToken, rawRefreshToken, ToDto(user, roles));
+        return new AuthResponse(accessToken, rawRefreshToken, await ToDtoAsync(user, roles));
     }
 
     public async Task<AuthResponse> RefreshTokenAsync(string tokenHash)
@@ -61,7 +61,7 @@ public class AuthService : IAuthService
 
         await _db.SaveChangesAsync();
 
-        return new AuthResponse(accessToken, rawRefreshToken, ToDto(storedToken.User, roles));
+        return new AuthResponse(accessToken, rawRefreshToken, await ToDtoAsync(storedToken.User, roles));
     }
 
     public async Task LogoutAsync(string userId)
@@ -83,7 +83,7 @@ public class AuthService : IAuthService
         var user = await _userManager.FindByIdAsync(userId)
             ?? throw new KeyNotFoundException("User not found.");
         var roles = await _userManager.GetRolesAsync(user);
-        return ToDto(user, roles);
+        return await ToDtoAsync(user, roles);
     }
 
     private string GenerateAccessToken(AdminUser user, IList<string> roles)
@@ -137,12 +137,22 @@ public class AuthService : IAuthService
     public static string HashRefreshToken(string rawToken) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawToken)));
 
-    private static AdminUserDto ToDto(AdminUser user, IList<string> roles) =>
-        new(
+    private async Task<AdminUserDto> ToDtoAsync(AdminUser user, IList<string> roles)
+    {
+        var businessName = user.BusinessId.HasValue
+            ? await _db.Businesses
+                .Where(b => b.Id == user.BusinessId.Value)
+                .Select(b => b.Name)
+                .FirstOrDefaultAsync()
+            : null;
+
+        return new AdminUserDto(
             user.Id,
             user.Email!,
             user.FirstName,
             user.LastName,
             roles.FirstOrDefault() ?? "Operator",
-            user.BusinessId);
+            user.BusinessId,
+            businessName);
+    }
 }

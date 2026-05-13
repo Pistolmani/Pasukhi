@@ -7,6 +7,7 @@ interface User {
   lastName: string
   role: string
   businessId: string | null
+  businessName: string | null
 }
 
 interface AuthState {

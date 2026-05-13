@@ -12,6 +12,7 @@ export interface User {
   lastName: string
   role: string
   businessId: string | null
+  businessName: string | null
 }
 
 export interface AuthResponse {

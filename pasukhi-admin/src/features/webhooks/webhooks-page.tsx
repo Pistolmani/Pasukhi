@@ -8,6 +8,7 @@ import { ChannelType, channelTypeLabels, type ChannelConnection } from '../../ty
 const webhookPaths: Record<ChannelType, string> = {
   [ChannelType.Instagram]: '/api/webhook/instagram',
   [ChannelType.Messenger]: '/api/webhook/messenger',
+  [ChannelType.WhatsApp]: '/api/webhook/whatsapp',
 }
 
 function copy(text: string) {

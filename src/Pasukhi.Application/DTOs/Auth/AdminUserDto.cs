@@ -6,5 +6,6 @@ public record AdminUserDto(
     string FirstName,
     string LastName,
     string Role,
-    Guid? BusinessId
+    Guid? BusinessId,
+    string? BusinessName
 );
