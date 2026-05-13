@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, CircleAlert, WandSparkles, XCircle } from 'lucide-react'
+import { CheckCircle2, CircleAlert, Sparkles, WandSparkles, XCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { botReadinessApi } from '../../api/bot-readiness'
@@ -66,7 +66,6 @@ export function BotReadinessPage() {
   })
 
   const savedAnswers = useMemo(() => answersFromReport(reportQuery.data), [reportQuery.data])
-
   const completionBySection = useMemo(
     () => new Map((reportQuery.data?.sectionCompletion ?? []).map((section) => [section.sectionKey, section])),
     [reportQuery.data?.sectionCompletion],
@@ -140,13 +139,14 @@ export function BotReadinessPage() {
 
   const report = reportQuery.data
   const pendingSuggestions = report?.suggestions.filter((suggestion) => suggestion.status === 'pending') ?? []
+  const readiness = report?.readinessScore ?? 0
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Bot Readiness</h1>
-          <p className="text-muted-foreground text-sm">
+          <h2 className="text-[26px] font-semibold tracking-tight text-slate-950">Bot Readiness</h2>
+          <p className="mt-1 text-[13.5px] text-slate-500">
             Prepare safe business knowledge before connecting Instagram or Messenger automation.
           </p>
         </div>
@@ -165,52 +165,47 @@ export function BotReadinessPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
+      <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
         <aside className="space-y-4">
-          <div className="rounded-md border p-4">
-            <div className="text-muted-foreground text-sm">Readiness score</div>
-            <div className="mt-1 text-3xl font-semibold">{report?.readinessScore ?? 0}%</div>
-            <div className="bg-muted mt-3 h-2 overflow-hidden rounded-full">
-              <div
-                className="bg-primary h-full rounded-full transition-all"
-                style={{ width: `${report?.readinessScore ?? 0}%` }}
-              />
-            </div>
-            <div className="text-muted-foreground mt-2 text-xs">
-              {report?.answeredWeight ?? 0} of {report?.totalWeight ?? 0} weighted points complete
+          <div className="card-shadow rounded-2xl border border-border bg-white p-5">
+            <div className="flex flex-col items-center py-2">
+              <ProgressRing value={readiness} />
+              <div className="mt-4 text-center text-[12.5px] text-slate-500">
+                {report?.answeredWeight ?? 0} of {report?.totalWeight ?? 0} weighted points complete
+              </div>
             </div>
           </div>
 
-          <div className="rounded-md border p-4">
-            <div className="flex items-center gap-2 font-medium">
-              <CircleAlert className="size-4" />
+          <div className="card-shadow rounded-2xl border border-border bg-white p-5">
+            <div className="flex items-center gap-2 text-[13px] font-semibold text-slate-950">
+              <CircleAlert className="size-4 text-amber-600" />
               Missing info
             </div>
-            <div className="mt-3 space-y-2">
-              {reportQuery.isLoading && <p className="text-muted-foreground text-sm">Loading gaps...</p>}
+            <div className="mt-3 space-y-3">
+              {reportQuery.isLoading && <p className="text-[13px] text-slate-500">Loading gaps...</p>}
               {report && report.gaps.length === 0 && (
-                <p className="text-muted-foreground text-sm">Required answers are complete.</p>
+                <p className="text-[13px] text-slate-500">Required answers are complete.</p>
               )}
               {report?.gaps.slice(0, 8).map((gap) => (
-                <div key={gap.questionKey} className="text-sm">
-                  <div className="font-medium">{gap.label}</div>
-                  <div className="text-muted-foreground text-xs">{gap.sectionLabel}</div>
+                <div key={gap.questionKey} className="rounded-xl bg-amber-50/70 p-3">
+                  <div className="text-[13px] font-medium text-slate-900">{gap.label}</div>
+                  <div className="mt-0.5 text-[11.5px] text-amber-700">{gap.sectionLabel}</div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="rounded-md border p-4">
-            <div className="font-medium">Section completion</div>
-            <div className="mt-3 space-y-2">
+          <div className="card-shadow rounded-2xl border border-border bg-white p-5">
+            <div className="text-[13px] font-semibold text-slate-950">Section completion</div>
+            <div className="mt-3 space-y-3">
               {report?.sectionCompletion.map((section) => (
                 <div key={section.sectionKey}>
-                  <div className="flex items-center justify-between gap-2 text-sm">
-                    <span>{section.label}</span>
-                    <span className="text-muted-foreground">{section.score}%</span>
+                  <div className="flex items-center justify-between gap-2 text-[12.5px]">
+                    <span className="font-medium text-slate-700">{section.label}</span>
+                    <span className="tabular-nums text-slate-500">{section.score}%</span>
                   </div>
-                  <div className="bg-muted mt-1 h-1.5 overflow-hidden rounded-full">
-                    <div className="bg-primary h-full rounded-full" style={{ width: `${section.score}%` }} />
+                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-primary" style={{ width: `${section.score}%` }} />
                   </div>
                 </div>
               ))}
@@ -218,43 +213,45 @@ export function BotReadinessPage() {
           </div>
         </aside>
 
-        <main className="space-y-6">
-          <section className="space-y-4">
-            {templateQuery.data?.sections.map((section) => {
-              const completion = completionBySection.get(section.key)
-              return (
-                <div key={section.key} className="rounded-md border p-4">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h2 className="text-lg font-semibold">{section.label}</h2>
-                      <p className="text-muted-foreground text-sm">{section.description}</p>
-                    </div>
-                    {completion && (
-                      <div className="text-muted-foreground text-sm">{completion.score}% complete</div>
-                    )}
+        <main className="space-y-4">
+          {templateQuery.data?.sections.map((section) => {
+            const completion = completionBySection.get(section.key)
+            return (
+              <section key={section.key} className="card-shadow rounded-2xl border border-border bg-white p-5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="text-[15px] font-semibold text-slate-950">{section.label}</h3>
+                    <p className="mt-1 text-[13px] text-slate-500">{section.description}</p>
                   </div>
+                  {completion && (
+                    <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-medium text-indigo-700">
+                      {completion.score}% complete
+                    </span>
+                  )}
+                </div>
 
-                  <div className="mt-4 grid gap-4">
-                    {section.questions.map((question) => {
-                      const draft = draftAnswers[question.key] ?? savedAnswers[question.key] ?? { answerText: '', isSkipped: false }
-                      const inputId = `bot-readiness-${question.key}`
-                      return (
-                        <div key={question.key} className="space-y-2">
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <Label htmlFor={inputId}>
-                              {question.label}
-                              {question.required && <span className="text-destructive"> *</span>}
-                            </Label>
-                            <label className="text-muted-foreground flex items-center gap-2 text-xs">
-                              <input
-                                type="checkbox"
-                                className="size-4 rounded border"
-                                checked={draft.isSkipped}
-                                onChange={(event) => setAnswer(question.key, { isSkipped: event.target.checked })}
-                              />
-                              Skip for now
-                            </label>
-                          </div>
+                <div className="mt-5 grid gap-4">
+                  {section.questions.map((question) => {
+                    const draft = draftAnswers[question.key] ?? savedAnswers[question.key] ?? { answerText: '', isSkipped: false }
+                    const inputId = `bot-readiness-${question.key}`
+                    return (
+                      <div key={question.key} className="rounded-xl border border-border/80 bg-stone-50/50 p-4">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <Label htmlFor={inputId} className="text-[13px] font-semibold text-slate-800">
+                            {question.label}
+                            {question.required && <span className="text-rose-600"> *</span>}
+                          </Label>
+                          <label className="flex items-center gap-2 text-[12px] text-slate-500">
+                            <input
+                              type="checkbox"
+                              className="size-4 rounded border-border"
+                              checked={draft.isSkipped}
+                              onChange={(event) => setAnswer(question.key, { isSkipped: event.target.checked })}
+                            />
+                            Skip for now
+                          </label>
+                        </div>
+                        <div className="mt-3">
                           {question.inputType === 'text' ? (
                             <Input
                               id={inputId}
@@ -271,44 +268,46 @@ export function BotReadinessPage() {
                               onChange={(event) => setAnswer(question.key, { answerText: event.target.value })}
                             />
                           )}
-                          <p className="text-muted-foreground text-xs">{question.helpText}</p>
                         </div>
-                      )
-                    })}
-                  </div>
+                        <p className="mt-2 text-[12px] text-slate-500">{question.helpText}</p>
+                      </div>
+                    )
+                  })}
                 </div>
-              )
-            })}
-          </section>
+              </section>
+            )
+          })}
 
-          <section className="rounded-md border p-4">
+          <section className="card-shadow rounded-2xl border border-border bg-white p-5">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-lg font-semibold">Knowledge suggestions</h2>
-                <p className="text-muted-foreground text-sm">
+                <h3 className="text-[15px] font-semibold text-slate-950">Knowledge suggestions</h3>
+                <p className="mt-1 text-[13px] text-slate-500">
                   Approve suggestions to create FAQs or update the managed AI prompt context.
                 </p>
               </div>
-              <div className="text-muted-foreground text-sm">{pendingSuggestions.length} pending</div>
+              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700">
+                {pendingSuggestions.length} pending
+              </span>
             </div>
 
             <div className="mt-4 space-y-3">
               {report?.suggestions.length === 0 && (
-                <p className="text-muted-foreground text-sm">No suggestions generated yet.</p>
+                <p className="text-[13px] text-slate-500">No suggestions generated yet.</p>
               )}
               {report?.suggestions.map((suggestion) => (
-                <div key={suggestion.id} className="rounded-md border p-3">
+                <div key={suggestion.id} className="rounded-xl border border-border bg-stone-50/50 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{suggestionTitle(suggestion)}</span>
-                        <span className={`rounded-full border px-2 py-0.5 text-xs ${statusClass(suggestion.status)}`}>
+                        <span className="font-semibold text-slate-950">{suggestionTitle(suggestion)}</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusClass(suggestion.status)}`}>
                           {suggestion.status}
                         </span>
                       </div>
-                      <p className="text-sm whitespace-pre-wrap">{suggestionBody(suggestion)}</p>
+                      <p className="whitespace-pre-wrap text-[13px] text-slate-700">{suggestionBody(suggestion)}</p>
                       {suggestion.payload.keywords && (
-                        <p className="text-muted-foreground text-xs">Keywords: {suggestion.payload.keywords}</p>
+                        <p className="text-[12px] text-slate-500">Keywords: {suggestion.payload.keywords}</p>
                       )}
                     </div>
                     <div className="flex shrink-0 gap-2">
@@ -337,6 +336,47 @@ export function BotReadinessPage() {
             </div>
           </section>
         </main>
+      </div>
+    </div>
+  )
+}
+
+function ProgressRing({ value }: { value: number }) {
+  const size = 168
+  const stroke = 12
+  const radius = (size - stroke) / 2
+  const circumference = 2 * Math.PI * radius
+  const dash = circumference * (value / 100)
+
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <defs>
+          <linearGradient id="botReadinessGradient" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="var(--primary)" />
+            <stop offset="100%" stopColor="var(--pa-accent)" />
+          </linearGradient>
+        </defs>
+        <circle cx={size / 2} cy={size / 2} r={radius} stroke="#eef2ff" strokeWidth={stroke} fill="none" />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="url(#botReadinessGradient)"
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          fill="none"
+          strokeDasharray={`${dash} ${circumference}`}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <Sparkles className="mb-1 size-4 text-amber-500" />
+        <div className="text-[42px] font-semibold tracking-tight text-slate-950 tabular-nums">
+          {value}
+          <span className="ml-0.5 align-top text-[17px] text-slate-400">%</span>
+        </div>
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Bot readiness</div>
       </div>
     </div>
   )

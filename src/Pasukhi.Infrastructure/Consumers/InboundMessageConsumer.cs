@@ -1,4 +1,4 @@
-using MassTransit;
+using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -22,9 +22,9 @@ namespace Pasukhi.Infrastructure.Consumers;
 ///   6. After inbound persistence succeeds, attempt FAQ auto-reply for text messages.
 /// A DbUpdateException from the inbound unique index race is treated as a successful
 /// no-op (another worker already persisted it).
-/// Tenant context is set by TenantContextFilter before Consume runs.
+/// Tenant context is set by the background service before ProcessAsync runs.
 /// </summary>
-public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
+public class InboundMessageConsumer
 {
     private static readonly IReadOnlyDictionary<string, string> IanaToWindowsTimeZoneIds =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -46,7 +46,7 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
     private readonly IAiService _aiService;
     private readonly IAiSafetyChecker _aiSafetyChecker;
     private readonly AiOptions _aiOptions;
-    private readonly IPublishEndpoint _bus;
+    private readonly ChannelWriter<OutboundMessageReadyEvent> _outboundWriter;
     private readonly ILogger<InboundMessageConsumer> _logger;
 
     public InboundMessageConsumer(
@@ -58,7 +58,7 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
         IAiService aiService,
         IAiSafetyChecker aiSafetyChecker,
         IOptions<AiOptions> aiOptions,
-        IPublishEndpoint bus,
+        ChannelWriter<OutboundMessageReadyEvent> outboundWriter,
         ILogger<InboundMessageConsumer> logger)
     {
         _db = db;
@@ -69,15 +69,12 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
         _aiService = aiService;
         _aiSafetyChecker = aiSafetyChecker;
         _aiOptions = aiOptions.Value;
-        _bus = bus;
+        _outboundWriter = outboundWriter;
         _logger = logger;
     }
 
-    public async Task Consume(ConsumeContext<InboundMessageEvent> context)
+    public async Task ProcessAsync(InboundMessageEvent e, CancellationToken ct)
     {
-        var e = context.Message;
-        var ct = context.CancellationToken;
-
         if (e.BusinessId == Guid.Empty)
         {
             _logger.LogWarning("InboundMessageEvent dropped: empty BusinessId. ExternalMessageId={ExternalMessageId}", e.ExternalMessageId);
@@ -563,7 +560,7 @@ public class InboundMessageConsumer : IConsumer<InboundMessageEvent>
             return true;
         }
 
-        await _bus.Publish(new OutboundMessageReadyEvent
+        await _outboundWriter.WriteAsync(new OutboundMessageReadyEvent
         {
             BusinessId = outboundMessage.BusinessId,
             MessageId = outboundMessage.Id,

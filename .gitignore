@@ -11,6 +11,7 @@ dist/
 .vs/
 .vscode/
 .idea/
+.claude/
 
 logs/
 *.log

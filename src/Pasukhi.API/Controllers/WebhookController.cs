@@ -1,6 +1,6 @@
 using System.Text;
 using System.Text.Json;
-using MassTransit;
+using System.Threading.Channels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Pasukhi.Application.Interfaces;
@@ -18,7 +18,7 @@ public class WebhookController : ControllerBase
     private readonly IWebhookSignatureVerifier _verifier;
     private readonly IWebhookResolver _resolver;
     private readonly IMetaWebhookParser _parser;
-    private readonly IPublishEndpoint _bus;
+    private readonly ChannelWriter<InboundMessageEvent> _inboundChannel;
     private readonly PasukhiDbContext _db;
     private readonly IConfiguration _config;
     private readonly ILogger<WebhookController> _logger;
@@ -27,7 +27,7 @@ public class WebhookController : ControllerBase
         IWebhookSignatureVerifier verifier,
         IWebhookResolver resolver,
         IMetaWebhookParser parser,
-        IPublishEndpoint bus,
+        ChannelWriter<InboundMessageEvent> inboundChannel,
         PasukhiDbContext db,
         IConfiguration config,
         ILogger<WebhookController> logger)
@@ -35,7 +35,7 @@ public class WebhookController : ControllerBase
         _verifier = verifier;
         _resolver = resolver;
         _parser = parser;
-        _bus = bus;
+        _inboundChannel = inboundChannel;
         _db = db;
         _config = config;
         _logger = logger;
@@ -157,7 +157,7 @@ public class WebhookController : ControllerBase
                 RawPayloadJson = body
             };
 
-            await _bus.Publish(evt, ct);
+            await _inboundChannel.WriteAsync(evt, ct);
         }
 
         return Ok();

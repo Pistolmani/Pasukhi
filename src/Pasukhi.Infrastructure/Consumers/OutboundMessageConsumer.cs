@@ -1,4 +1,3 @@
-using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Pasukhi.Application.Interfaces;
@@ -8,7 +7,7 @@ using Pasukhi.Infrastructure.Data;
 
 namespace Pasukhi.Infrastructure.Consumers;
 
-public class OutboundMessageConsumer : IConsumer<OutboundMessageReadyEvent>
+public class OutboundMessageConsumer
 {
     private readonly PasukhiDbContext _db;
     private readonly IInstagramChannelProvider _instagram;
@@ -30,11 +29,8 @@ public class OutboundMessageConsumer : IConsumer<OutboundMessageReadyEvent>
         _logger = logger;
     }
 
-    public async Task Consume(ConsumeContext<OutboundMessageReadyEvent> context)
+    public async Task ProcessAsync(OutboundMessageReadyEvent evt, CancellationToken ct)
     {
-        var evt = context.Message;
-        var ct = context.CancellationToken;
-
         var message = await _db.Messages
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(m => m.Id == evt.MessageId && m.BusinessId == evt.BusinessId, ct);

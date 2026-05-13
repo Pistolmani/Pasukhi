@@ -27,6 +27,8 @@ public class PasukhiDbContext : IdentityDbContext<AdminUser>
     public DbSet<DailyMetric> DailyMetrics => Set<DailyMetric>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<BotQuestionnaireAnswer> BotQuestionnaireAnswers => Set<BotQuestionnaireAnswer>();
+    public DbSet<BotKnowledgeSuggestion> BotKnowledgeSuggestions => Set<BotKnowledgeSuggestion>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -41,6 +43,8 @@ public class PasukhiDbContext : IdentityDbContext<AdminUser>
         builder.Entity<BusinessPrompt>().HasQueryFilter(e => e.BusinessId == _tenantProvider.BusinessId);
         builder.Entity<BusinessSetting>().HasQueryFilter(e => e.BusinessId == _tenantProvider.BusinessId);
         builder.Entity<DailyMetric>().HasQueryFilter(e => e.BusinessId == _tenantProvider.BusinessId);
+        builder.Entity<BotQuestionnaireAnswer>().HasQueryFilter(e => e.BusinessId == _tenantProvider.BusinessId);
+        builder.Entity<BotKnowledgeSuggestion>().HasQueryFilter(e => e.BusinessId == _tenantProvider.BusinessId);
 
         builder.Entity<Business>().HasIndex(b => b.Slug).IsUnique();
         builder.Entity<ChannelConnection>()
@@ -59,6 +63,22 @@ public class PasukhiDbContext : IdentityDbContext<AdminUser>
             .HasIndex(m => new { m.BusinessId, m.ReplyToMessageId, m.Source })
             .IsUnique()
             .HasFilter("\"ReplyToMessageId\" IS NOT NULL");
+
+        builder.Entity<BotQuestionnaireAnswer>(entity =>
+        {
+            entity.HasIndex(a => new { a.BusinessId, a.QuestionKey }).IsUnique();
+            entity.Property(a => a.QuestionKey).HasMaxLength(120);
+            entity.Property(a => a.AnswerText).HasMaxLength(5000);
+        });
+
+        builder.Entity<BotKnowledgeSuggestion>(entity =>
+        {
+            entity.HasIndex(s => new { s.BusinessId, s.Type, s.DedupeHash }).IsUnique();
+            entity.HasIndex(s => new { s.BusinessId, s.Status });
+            entity.Property(s => s.DedupeHash).HasMaxLength(64);
+            entity.Property(s => s.SourceQuestionKeys).HasColumnType("jsonb");
+            entity.Property(s => s.PayloadJson).HasColumnType("jsonb");
+        });
 
         builder.Entity<RefreshToken>().HasIndex(r => r.Token).IsUnique();
         builder.Entity<RefreshToken>()

@@ -1,20 +1,22 @@
 using System.Text;
+using System.Threading.Channels;
 using FluentValidation;
 using FluentValidation.AspNetCore;
-using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Pasukhi.API.Middleware;
 using Pasukhi.Application.AI;
+using Pasukhi.Application.BotReadiness;
 using Pasukhi.Application.Interfaces;
+using Pasukhi.Application.Messaging;
 using Pasukhi.Application.Validators;
 using Pasukhi.Domain.Entities;
 using Pasukhi.Infrastructure.Channels;
 using Pasukhi.Infrastructure.Consumers;
 using Pasukhi.Infrastructure.Data;
-using Pasukhi.Infrastructure.Messaging;
+using Pasukhi.Infrastructure.Queue;
 using Pasukhi.Infrastructure.Services;
 using Pasukhi.Infrastructure.Tenant;
 using Serilog;
@@ -90,6 +92,8 @@ builder.Services.AddScoped<IBusinessPromptService, BusinessPromptService>();
 builder.Services.AddScoped<IEscalationService, EscalationService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
+builder.Services.Configure<BotReadinessOptions>(builder.Configuration.GetSection("BotReadiness"));
+builder.Services.AddScoped<IBotReadinessService, BotReadinessService>();
 builder.Services.AddScoped<IWebhookSignatureVerifier, WebhookSignatureVerifier>();
 builder.Services.AddScoped<IWebhookResolver, WebhookResolver>();
 builder.Services.AddScoped<IMetaWebhookParser, MetaWebhookParser>();
@@ -110,50 +114,29 @@ else
     builder.Services.AddHttpClient<IAiService, OpenAiService>();
 }
 
-builder.Services.AddMassTransit(x =>
+// In-process message channels (replaces RabbitMQ/MassTransit)
+var inboundChannel = Channel.CreateBounded<InboundMessageEvent>(new BoundedChannelOptions(512)
 {
-    x.AddConsumer<InboundMessageConsumer>(c =>
-    {
-        c.UseMessageRetry(r => r.Exponential(
-            retryLimit: 3,
-            minInterval: TimeSpan.FromSeconds(2),
-            maxInterval: TimeSpan.FromSeconds(30),
-            intervalDelta: TimeSpan.FromSeconds(5)));
-    });
-    x.AddConsumer<OutboundMessageConsumer>();
-
-    x.UsingRabbitMq((context, cfg) =>
-    {
-        var rabbit = builder.Configuration.GetSection("RabbitMQ");
-        var rabbitUrl = rabbit["Url"];
-        if (!string.IsNullOrEmpty(rabbitUrl))
-        {
-            cfg.Host(new Uri(rabbitUrl));
-        }
-        else
-        {
-            cfg.Host(rabbit["Host"] ?? "localhost", h =>
-            {
-                h.Username(rabbit["Username"] ?? "guest");
-                h.Password(rabbit["Password"] ?? "guest");
-            });
-        }
-
-        cfg.ReceiveEndpoint("inbound-message-queue", e =>
-        {
-            e.PrefetchCount = 16;
-            e.UseConsumeFilter(typeof(TenantContextFilter<>), context);
-            e.ConfigureConsumer<InboundMessageConsumer>(context);
-        });
-
-        cfg.ReceiveEndpoint("outbound-message-queue", e =>
-        {
-            e.PrefetchCount = 16;
-            e.UseConsumeFilter(typeof(TenantContextFilter<>), context);
-            e.ConfigureConsumer<OutboundMessageConsumer>(context);
-        });
-    });
+    FullMode = BoundedChannelFullMode.Wait,
+    SingleReader = true,
+    SingleWriter = false
 });
+var outboundChannel = Channel.CreateBounded<OutboundMessageReadyEvent>(new BoundedChannelOptions(512)
+{
+    FullMode = BoundedChannelFullMode.Wait,
+    SingleReader = true,
+    SingleWriter = false
+});
+
+builder.Services.AddSingleton(inboundChannel.Writer);
+builder.Services.AddSingleton(inboundChannel.Reader);
+builder.Services.AddSingleton(outboundChannel.Writer);
+builder.Services.AddSingleton(outboundChannel.Reader);
+
+builder.Services.AddScoped<InboundMessageConsumer>();
+builder.Services.AddScoped<OutboundMessageConsumer>();
+builder.Services.AddHostedService<InboundMessageBackgroundService>();
+builder.Services.AddHostedService<OutboundMessageBackgroundService>();
 
 builder.Services.AddControllers();
 builder.Services.AddFluentValidationAutoValidation();

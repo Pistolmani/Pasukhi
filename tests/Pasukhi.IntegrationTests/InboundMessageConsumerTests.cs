@@ -1,5 +1,4 @@
-using MassTransit;
-using MassTransit.Testing;
+using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -11,7 +10,6 @@ using Pasukhi.Domain.Entities;
 using Pasukhi.Domain.Enums;
 using Pasukhi.Infrastructure.Consumers;
 using Pasukhi.Infrastructure.Data;
-using Pasukhi.Infrastructure.Messaging;
 using Pasukhi.Infrastructure.Services;
 using Pasukhi.Infrastructure.Tenant;
 
@@ -19,7 +17,7 @@ namespace Pasukhi.IntegrationTests;
 
 public class InboundMessageConsumerTests
 {
-    private static async Task<(ITestHarness harness, ServiceProvider provider)> CreateHarnessAsync(string dbName)
+    private static (ServiceProvider provider, Channel<OutboundMessageReadyEvent> outboundChannel) CreateProvider(string dbName)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -46,23 +44,21 @@ public class InboundMessageConsumerTests
         services.AddSingleton<FakeAiService>();
         services.AddScoped<IAiService>(sp => sp.GetRequiredService<FakeAiService>());
 
-        services.AddMassTransitTestHarness(x =>
-        {
-            x.AddConsumer<InboundMessageConsumer>();
-            x.UsingInMemory((context, cfg) =>
-            {
-                cfg.ReceiveEndpoint("inbound-message-queue", e =>
-                {
-                    e.UseConsumeFilter(typeof(TenantContextFilter<>), context);
-                    e.ConfigureConsumer<InboundMessageConsumer>(context);
-                });
-            });
-        });
+        var outboundChannel = Channel.CreateUnbounded<OutboundMessageReadyEvent>();
+        services.AddSingleton(outboundChannel.Writer);
+        services.AddSingleton(outboundChannel.Reader);
+
+        services.AddScoped<InboundMessageConsumer>();
 
         var provider = services.BuildServiceProvider(true);
-        var harness = provider.GetRequiredService<ITestHarness>();
-        await harness.Start();
-        return (harness, provider);
+        return (provider, outboundChannel);
+    }
+
+    private static async Task<InboundMessageConsumer> CreateConsumerAsync(IServiceProvider provider, Guid businessId)
+    {
+        var scope = provider.CreateScope();
+        scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
+        return scope.ServiceProvider.GetRequiredService<InboundMessageConsumer>();
     }
 
     private static async Task SeedChannelAsync(IServiceProvider provider, Guid businessId, Guid channelConnectionId)
@@ -206,44 +202,15 @@ public class InboundMessageConsumerTests
             RawPayloadJson = "{}"
         };
 
-    private static async Task WaitForMessagesAsync(
-        IServiceProvider provider,
-        Guid businessId,
-        int expectedCount,
-        int attempts = 30)
+    private static async Task<IReadOnlyList<OutboundMessageReadyEvent>> DrainOutboundAsync(
+        Channel<OutboundMessageReadyEvent> channel)
     {
-        for (var i = 0; i < attempts; i++)
+        var result = new List<OutboundMessageReadyEvent>();
+        while (channel.Reader.TryRead(out var evt))
         {
-            using var scope = provider.CreateScope();
-            scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
-            var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
-            if (await db.Messages.CountAsync() >= expectedCount)
-            {
-                return;
-            }
-
-            await Task.Delay(100);
+            result.Add(evt);
         }
-    }
-
-    private static async Task WaitForEscalationsAsync(
-        IServiceProvider provider,
-        Guid businessId,
-        int expectedCount,
-        int attempts = 30)
-    {
-        for (var i = 0; i < attempts; i++)
-        {
-            using var scope = provider.CreateScope();
-            scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
-            var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
-            if (await db.Escalations.CountAsync() >= expectedCount)
-            {
-                return;
-            }
-
-            await Task.Delay(100);
-        }
+        return result;
     }
 
     private sealed class FakeAiService : IAiService
@@ -266,18 +233,25 @@ public class InboundMessageConsumerTests
         }
     }
 
+    private static async Task RunConsumerAsync(IServiceProvider provider, Guid businessId, InboundMessageEvent evt)
+    {
+        using var scope = provider.CreateScope();
+        scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
+        var consumer = scope.ServiceProvider.GetRequiredService<InboundMessageConsumer>();
+        await consumer.ProcessAsync(evt, CancellationToken.None);
+    }
+
     [Fact]
     public async Task Single_event_persists_one_message_one_conversation_and_increments_metric()
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Single_event_persists_one_message_one_conversation_and_increments_metric));
+        var (provider, outboundChannel) = CreateProvider(nameof(Single_event_persists_one_message_one_conversation_and_increments_metric));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-1"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-1"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -296,14 +270,13 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Duplicate_event_is_idempotent));
+        var (provider, outboundChannel) = CreateProvider(nameof(Duplicate_event_is_idempotent));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-dup"));
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-dup"));
-            Assert.Equal(2, await harness.Consumed.SelectAsync<InboundMessageEvent>().Count());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-dup"));
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-dup"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -321,16 +294,14 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Faq_match_creates_pending_outbound_reply_and_publishes_event));
+        var (provider, outboundChannel) = CreateProvider(nameof(Faq_match_creates_pending_outbound_reply_and_publishes_event));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
             await SeedBusinessPromptAsync(provider, businessId, isAiEnabled: true);
             var faq = await SeedFaqAsync(provider, businessId, "hello", "Hi from FAQ");
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-faq", textContent: "hello"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
-            Assert.True(await harness.Published.Any<OutboundMessageReadyEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-faq", textContent: "hello"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -355,11 +326,11 @@ public class InboundMessageConsumerTests
             Assert.Equal(1, metric.TotalOutbound);
             Assert.Equal(1, metric.FaqReplies);
 
-            var published = await harness.Published.SelectAsync<OutboundMessageReadyEvent>().FirstOrDefault();
-            Assert.NotNull(published);
-            Assert.Equal(outbound.Id, published.Context.Message.MessageId);
-            Assert.Equal("Hi from FAQ", published.Context.Message.TextContent);
-            Assert.Equal(inbound.ConversationId, published.Context.Message.ConversationId);
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Single(published);
+            Assert.Equal(outbound.Id, published[0].MessageId);
+            Assert.Equal("Hi from FAQ", published[0].TextContent);
+            Assert.Equal(inbound.ConversationId, published[0].ConversationId);
         }
     }
 
@@ -368,15 +339,14 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Duplicate_event_does_not_create_duplicate_faq_reply));
+        var (provider, outboundChannel) = CreateProvider(nameof(Duplicate_event_does_not_create_duplicate_faq_reply));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
             await SeedFaqAsync(provider, businessId, "hello", "Hi from FAQ");
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-faq-dup", textContent: "hello"));
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-faq-dup", textContent: "hello"));
-            Assert.Equal(2, await harness.Consumed.SelectAsync<InboundMessageEvent>().Count());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-faq-dup", textContent: "hello"));
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-faq-dup", textContent: "hello"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -384,7 +354,9 @@ public class InboundMessageConsumerTests
 
             Assert.Equal(1, await db.Messages.CountAsync(m => m.Direction == MessageDirection.Inbound));
             Assert.Equal(1, await db.Messages.CountAsync(m => m.Source == MessageSource.FaqAutoReply));
-            Assert.Equal(1, await harness.Published.SelectAsync<OutboundMessageReadyEvent>().Count());
+
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Single(published);
         }
     }
 
@@ -393,15 +365,14 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Faq_match_preempts_ai_fallback));
+        var (provider, outboundChannel) = CreateProvider(nameof(Faq_match_preempts_ai_fallback));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
             await SeedBusinessPromptAsync(provider, businessId, isAiEnabled: true);
             await SeedFaqAsync(provider, businessId, "hello", "FAQ wins before AI");
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-faq-before-ai", textContent: "hello"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-faq-before-ai", textContent: "hello"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -419,22 +390,23 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Auto_reply_disabled_persists_inbound_only_and_skips_automation));
+        var (provider, outboundChannel) = CreateProvider(nameof(Auto_reply_disabled_persists_inbound_only_and_skips_automation));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
             var faq = await SeedFaqAsync(provider, businessId, "hello", "Hi from FAQ");
             await SeedBusinessSettingAsync(provider, businessId, SettingKeys.AutoReplyEnabled, "False");
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-auto-off", textContent: "hello"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-auto-off", textContent: "hello"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
             var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
 
             Assert.Equal(1, await db.Messages.CountAsync());
-            Assert.False(await harness.Published.Any<OutboundMessageReadyEvent>());
+
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Empty(published);
             Assert.Equal(0, provider.GetRequiredService<FakeAiService>().CallCount);
 
             var savedFaq = await db.FaqItems.SingleAsync(f => f.Id == faq.Id);
@@ -447,7 +419,7 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Outside_working_hours_persists_inbound_only_and_skips_automation));
+        var (provider, outboundChannel) = CreateProvider(nameof(Outside_working_hours_persists_inbound_only_and_skips_automation));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
@@ -458,15 +430,16 @@ public class InboundMessageConsumerTests
             await SeedBusinessSettingAsync(provider, businessId, SettingKeys.WorkingHoursEnd, utcNow.AddHours(2).ToString("HH:mm"));
             await SeedBusinessSettingAsync(provider, businessId, SettingKeys.Timezone, "UTC");
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-outside-hours", textContent: "hello"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-outside-hours", textContent: "hello"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
             var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
 
             Assert.Equal(1, await db.Messages.CountAsync());
-            Assert.False(await harness.Published.Any<OutboundMessageReadyEvent>());
+
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Empty(published);
             Assert.Equal(0, provider.GetRequiredService<FakeAiService>().CallCount);
 
             var savedFaq = await db.FaqItems.SingleAsync(f => f.Id == faq.Id);
@@ -479,7 +452,7 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Working_hours_with_default_iana_timezone_allows_automation_inside_window));
+        var (provider, outboundChannel) = CreateProvider(nameof(Working_hours_with_default_iana_timezone_allows_automation_inside_window));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
@@ -491,9 +464,7 @@ public class InboundMessageConsumerTests
             await SeedBusinessSettingAsync(provider, businessId, SettingKeys.WorkingHoursEnd, tbilisiNow.AddMinutes(30).ToString("HH:mm"));
             await SeedBusinessSettingAsync(provider, businessId, SettingKeys.Timezone, "Asia/Tbilisi");
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-inside-iana-hours", textContent: "hello"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
-            Assert.True(await harness.Published.Any<OutboundMessageReadyEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-inside-iana-hours", textContent: "hello"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -510,21 +481,23 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(No_match_text_without_ai_prompt_escalates_and_publishes_no_outbound));
+        var (provider, outboundChannel) = CreateProvider(nameof(No_match_text_without_ai_prompt_escalates_and_publishes_no_outbound));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
             await SeedFaqAsync(provider, businessId, "shipping", "We ship tomorrow");
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-no-match", textContent: "hello"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-no-match", textContent: "hello"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
             var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
 
             Assert.Equal(1, await db.Messages.CountAsync());
-            Assert.False(await harness.Published.Any<OutboundMessageReadyEvent>());
+
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Empty(published);
+
             var metric = await db.DailyMetrics.SingleAsync();
             Assert.Equal(1, metric.TotalInbound);
             Assert.Equal(0, metric.TotalOutbound);
@@ -541,7 +514,7 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Rule_match_creates_pending_outbound_reply_and_publishes_event));
+        var (provider, outboundChannel) = CreateProvider(nameof(Rule_match_creates_pending_outbound_reply_and_publishes_event));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
@@ -554,9 +527,7 @@ public class InboundMessageConsumerTests
                 "help",
                 actionValue: "A human-friendly rule reply");
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-rule", textContent: "help me"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
-            Assert.True(await harness.Published.Any<OutboundMessageReadyEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-rule", textContent: "help me"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -582,10 +553,10 @@ public class InboundMessageConsumerTests
             Assert.Equal(0, metric.FaqReplies);
             Assert.Equal(1, metric.RuleReplies);
 
-            var published = await harness.Published.SelectAsync<OutboundMessageReadyEvent>().FirstOrDefault();
-            Assert.NotNull(published);
-            Assert.Equal(outbound.Id, published.Context.Message.MessageId);
-            Assert.Equal("A human-friendly rule reply", published.Context.Message.TextContent);
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Single(published);
+            Assert.Equal(outbound.Id, published[0].MessageId);
+            Assert.Equal("A human-friendly rule reply", published[0].TextContent);
         }
     }
 
@@ -594,7 +565,7 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Rule_match_preempts_ai_fallback));
+        var (provider, outboundChannel) = CreateProvider(nameof(Rule_match_preempts_ai_fallback));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
@@ -608,8 +579,7 @@ public class InboundMessageConsumerTests
                 "help",
                 actionValue: "Rule wins before AI");
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-rule-before-ai", textContent: "help me"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-rule-before-ai", textContent: "help me"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -627,7 +597,7 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Faq_match_preempts_matching_rule));
+        var (provider, outboundChannel) = CreateProvider(nameof(Faq_match_preempts_matching_rule));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
@@ -641,8 +611,7 @@ public class InboundMessageConsumerTests
                 "help",
                 actionValue: "Rule should not win");
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-faq-before-rule", textContent: "help"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-faq-before-rule", textContent: "help"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -663,7 +632,7 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Higher_priority_rule_wins_when_multiple_rules_match));
+        var (provider, outboundChannel) = CreateProvider(nameof(Higher_priority_rule_wins_when_multiple_rules_match));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
@@ -684,8 +653,7 @@ public class InboundMessageConsumerTests
                 "help",
                 actionValue: "First reply");
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-rule-priority", textContent: "help"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-rule-priority", textContent: "help"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -706,15 +674,14 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Duplicate_event_does_not_create_duplicate_rule_reply));
+        var (provider, outboundChannel) = CreateProvider(nameof(Duplicate_event_does_not_create_duplicate_rule_reply));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
             await SeedRuleAsync(provider, businessId, "Help", 0, TriggerType.Keyword, "help");
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-rule-dup", textContent: "help"));
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-rule-dup", textContent: "help"));
-            Assert.Equal(2, await harness.Consumed.SelectAsync<InboundMessageEvent>().Count());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-rule-dup", textContent: "help"));
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-rule-dup", textContent: "help"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -722,7 +689,9 @@ public class InboundMessageConsumerTests
 
             Assert.Equal(1, await db.Messages.CountAsync(m => m.Direction == MessageDirection.Inbound));
             Assert.Equal(1, await db.Messages.CountAsync(m => m.Source == MessageSource.RuleAutoReply));
-            Assert.Equal(1, await harness.Published.SelectAsync<OutboundMessageReadyEvent>().Count());
+
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Single(published);
         }
     }
 
@@ -731,7 +700,7 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Rule_escalate_action_creates_escalation_without_outbound_reply));
+        var (provider, outboundChannel) = CreateProvider(nameof(Rule_escalate_action_creates_escalation_without_outbound_reply));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
@@ -745,15 +714,16 @@ public class InboundMessageConsumerTests
                 ActionType.Escalate,
                 "Customer asked for a person");
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-rule-escalate", textContent: "agent please"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-rule-escalate", textContent: "agent please"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
             var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
 
             Assert.Equal(1, await db.Messages.CountAsync());
-            Assert.False(await harness.Published.Any<OutboundMessageReadyEvent>());
+
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Empty(published);
 
             var escalation = await db.Escalations.SingleAsync();
             Assert.Equal("Customer asked for a person", escalation.Notes);
@@ -778,18 +748,19 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Ai_disabled_creates_no_match_escalation_and_publishes_no_outbound));
+        var (provider, outboundChannel) = CreateProvider(nameof(Ai_disabled_creates_no_match_escalation_and_publishes_no_outbound));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
             await SeedBusinessPromptAsync(provider, businessId, isAiEnabled: false);
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-ai-disabled", textContent: "unknown question"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-ai-disabled", textContent: "unknown question"));
 
             var fakeAi = provider.GetRequiredService<FakeAiService>();
             Assert.Equal(0, fakeAi.CallCount);
-            Assert.False(await harness.Published.Any<OutboundMessageReadyEvent>());
+
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Empty(published);
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -812,19 +783,19 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Ai_token_budget_exceeded_escalates_without_calling_ai));
+        var (provider, outboundChannel) = CreateProvider(nameof(Ai_token_budget_exceeded_escalates_without_calling_ai));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
             await SeedBusinessPromptAsync(provider, businessId, isAiEnabled: true, maxAiTokensPerDay: 100);
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-ai-budget", textContent: "unknown question"));
-            await WaitForMessagesAsync(provider, businessId, expectedCount: 1);
-            await WaitForEscalationsAsync(provider, businessId, expectedCount: 1);
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-ai-budget", textContent: "unknown question"));
 
             var fakeAi = provider.GetRequiredService<FakeAiService>();
             Assert.Equal(0, fakeAi.CallCount);
-            Assert.False(await harness.Published.Any<OutboundMessageReadyEvent>());
+
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Empty(published);
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -849,7 +820,7 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Ai_success_creates_pending_outbound_reply_and_publishes_event));
+        var (provider, outboundChannel) = CreateProvider(nameof(Ai_success_creates_pending_outbound_reply_and_publishes_event));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
@@ -865,9 +836,7 @@ public class InboundMessageConsumerTests
                 42,
                 TimeSpan.FromMilliseconds(12));
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-ai-success", textContent: "unknown question"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
-            Assert.True(await harness.Published.Any<OutboundMessageReadyEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-ai-success", textContent: "unknown question"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -892,10 +861,10 @@ public class InboundMessageConsumerTests
             Assert.Equal(1, metric.AiReplies);
             Assert.Equal(42, metric.AiTokensUsed);
 
-            var published = await harness.Published.SelectAsync<OutboundMessageReadyEvent>().FirstOrDefault();
-            Assert.NotNull(published);
-            Assert.Equal(outbound.Id, published.Context.Message.MessageId);
-            Assert.Equal("AI answer", published.Context.Message.TextContent);
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Single(published);
+            Assert.Equal(outbound.Id, published[0].MessageId);
+            Assert.Equal("AI answer", published[0].TextContent);
         }
     }
 
@@ -904,7 +873,7 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Low_confidence_ai_creates_escalation_with_rejected_text));
+        var (provider, outboundChannel) = CreateProvider(nameof(Low_confidence_ai_creates_escalation_with_rejected_text));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
@@ -918,15 +887,17 @@ public class InboundMessageConsumerTests
                 30,
                 TimeSpan.FromMilliseconds(10));
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-ai-low-confidence", textContent: "unknown question"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-ai-low-confidence", textContent: "unknown question"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
             var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
 
             Assert.Equal(1, await db.Messages.CountAsync());
-            Assert.False(await harness.Published.Any<OutboundMessageReadyEvent>());
+
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Empty(published);
+
             var escalation = await db.Escalations.SingleAsync();
             Assert.Equal(EscalationReason.LowAiConfidence, escalation.Reason);
             Assert.Equal("Maybe this is the answer", escalation.AiRejectedResponse);
@@ -943,7 +914,7 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Unsafe_ai_reply_creates_safety_escalation_with_rejected_text));
+        var (provider, outboundChannel) = CreateProvider(nameof(Unsafe_ai_reply_creates_safety_escalation_with_rejected_text));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
@@ -957,15 +928,17 @@ public class InboundMessageConsumerTests
                 31,
                 TimeSpan.FromMilliseconds(10));
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-ai-unsafe", textContent: "unknown question"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-ai-unsafe", textContent: "unknown question"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
             var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
 
             Assert.Equal(1, await db.Messages.CountAsync());
-            Assert.False(await harness.Published.Any<OutboundMessageReadyEvent>());
+
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Empty(published);
+
             var escalation = await db.Escalations.SingleAsync();
             Assert.Equal(EscalationReason.SafetyCheckFailed, escalation.Reason);
             Assert.Equal("Please visit https://made-up.example for details.", escalation.AiRejectedResponse);
@@ -977,15 +950,14 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Duplicate_event_does_not_create_duplicate_ai_reply_or_escalation));
+        var (provider, outboundChannel) = CreateProvider(nameof(Duplicate_event_does_not_create_duplicate_ai_reply_or_escalation));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
             await SeedBusinessPromptAsync(provider, businessId, isAiEnabled: true);
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-ai-dup", textContent: "unknown question"));
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-ai-dup", textContent: "unknown question"));
-            Assert.Equal(2, await harness.Consumed.SelectAsync<InboundMessageEvent>().Count());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-ai-dup", textContent: "unknown question"));
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-ai-dup", textContent: "unknown question"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -995,7 +967,9 @@ public class InboundMessageConsumerTests
             Assert.Equal(1, await db.Messages.CountAsync(m => m.Source == MessageSource.AiAutoReply));
             Assert.Equal(0, await db.Escalations.CountAsync());
             Assert.Equal(1, provider.GetRequiredService<FakeAiService>().CallCount);
-            Assert.Equal(1, await harness.Published.SelectAsync<OutboundMessageReadyEvent>().Count());
+
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Single(published);
         }
     }
 
@@ -1005,7 +979,7 @@ public class InboundMessageConsumerTests
         var businessId = Guid.NewGuid();
         var otherBusinessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Cross_tenant_ai_prompt_is_not_used));
+        var (provider, outboundChannel) = CreateProvider(nameof(Cross_tenant_ai_prompt_is_not_used));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
@@ -1036,8 +1010,7 @@ public class InboundMessageConsumerTests
                 await db.SaveChangesAsync();
             }
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-cross-ai", textContent: "unknown question"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-cross-ai", textContent: "unknown question"));
 
             using var verifyScope = provider.CreateScope();
             verifyScope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -1046,7 +1019,9 @@ public class InboundMessageConsumerTests
             Assert.Equal(1, await verifyDb.Messages.CountAsync());
             Assert.Equal(1, await verifyDb.Escalations.CountAsync());
             Assert.Equal(0, provider.GetRequiredService<FakeAiService>().CallCount);
-            Assert.False(await harness.Published.Any<OutboundMessageReadyEvent>());
+
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Empty(published);
         }
     }
 
@@ -1058,26 +1033,28 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync($"{nameof(Non_text_or_empty_text_does_not_run_faq_matching)}_{messageType}_{textContent ?? "null"}");
+        var (provider, outboundChannel) = CreateProvider($"{nameof(Non_text_or_empty_text_does_not_run_faq_matching)}_{messageType}_{textContent ?? "null"}");
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
             var faq = await SeedFaqAsync(provider, businessId, "hello", "Hi from FAQ");
 
-            await harness.Bus.Publish(NewEvent(
+            await RunConsumerAsync(provider, businessId, NewEvent(
                 businessId,
                 channelId,
                 $"ext-{messageType}-{textContent ?? "null"}",
                 textContent: textContent,
                 messageType: messageType));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
             var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
 
             Assert.Equal(1, await db.Messages.CountAsync());
-            Assert.False(await harness.Published.Any<OutboundMessageReadyEvent>());
+
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Empty(published);
+
             var savedFaq = await db.FaqItems.SingleAsync(f => f.Id == faq.Id);
             Assert.Equal(0, savedFaq.MatchCount);
             Assert.Equal(0, provider.GetRequiredService<FakeAiService>().CallCount);
@@ -1090,7 +1067,7 @@ public class InboundMessageConsumerTests
         var businessId = Guid.NewGuid();
         var otherBusinessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Cross_tenant_faq_is_not_matched));
+        var (provider, outboundChannel) = CreateProvider(nameof(Cross_tenant_faq_is_not_matched));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
@@ -1117,15 +1094,16 @@ public class InboundMessageConsumerTests
                 await db.SaveChangesAsync();
             }
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-cross-tenant", textContent: "hello"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-cross-tenant", textContent: "hello"));
 
             using var verifyScope = provider.CreateScope();
             verifyScope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
             var verifyDb = verifyScope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
 
             Assert.Equal(1, await verifyDb.Messages.CountAsync());
-            Assert.False(await harness.Published.Any<OutboundMessageReadyEvent>());
+
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Empty(published);
         }
     }
 
@@ -1135,7 +1113,7 @@ public class InboundMessageConsumerTests
         var businessId = Guid.NewGuid();
         var otherBusinessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Cross_tenant_rule_is_not_matched));
+        var (provider, outboundChannel) = CreateProvider(nameof(Cross_tenant_rule_is_not_matched));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
@@ -1166,15 +1144,16 @@ public class InboundMessageConsumerTests
                 await db.SaveChangesAsync();
             }
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-cross-rule", textContent: "help"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-cross-rule", textContent: "help"));
 
             using var verifyScope = provider.CreateScope();
             verifyScope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
             var verifyDb = verifyScope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
 
             Assert.Equal(1, await verifyDb.Messages.CountAsync());
-            Assert.False(await harness.Published.Any<OutboundMessageReadyEvent>());
+
+            var published = await DrainOutboundAsync(outboundChannel);
+            Assert.Empty(published);
         }
     }
 
@@ -1183,14 +1162,13 @@ public class InboundMessageConsumerTests
     {
         var businessId = Guid.NewGuid();
         var channelId = Guid.NewGuid();
-        var (harness, provider) = await CreateHarnessAsync(nameof(Two_senders_same_channel_create_two_conversations));
+        var (provider, outboundChannel) = CreateProvider(nameof(Two_senders_same_channel_create_two_conversations));
         await using (provider)
         {
             await SeedChannelAsync(provider, businessId, channelId);
 
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-a", "sender-A"));
-            await harness.Bus.Publish(NewEvent(businessId, channelId, "ext-b", "sender-B"));
-            Assert.Equal(2, await harness.Consumed.SelectAsync<InboundMessageEvent>().Count());
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-a", "sender-A"));
+            await RunConsumerAsync(provider, businessId, NewEvent(businessId, channelId, "ext-b", "sender-B"));
 
             using var scope = provider.CreateScope();
             scope.ServiceProvider.GetRequiredService<ITenantContext>().SetBusinessId(businessId);
@@ -1206,15 +1184,13 @@ public class InboundMessageConsumerTests
     [Fact]
     public async Task Empty_business_id_is_dropped()
     {
-        var (harness, provider) = await CreateHarnessAsync(nameof(Empty_business_id_is_dropped));
+        var (provider, outboundChannel) = CreateProvider(nameof(Empty_business_id_is_dropped));
         await using (provider)
         {
-            await harness.Bus.Publish(NewEvent(Guid.Empty, Guid.NewGuid(), "ext-0"));
-            Assert.True(await harness.Consumed.Any<InboundMessageEvent>());
+            await RunConsumerAsync(provider, Guid.Empty, NewEvent(Guid.Empty, Guid.NewGuid(), "ext-0"));
 
             using var scope = provider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
-            // DbContext without tenant still sees empty set for tenant-filtered entities.
             Assert.Equal(0, await db.Messages.IgnoreQueryFilters().CountAsync());
             Assert.Equal(0, await db.Conversations.IgnoreQueryFilters().CountAsync());
         }

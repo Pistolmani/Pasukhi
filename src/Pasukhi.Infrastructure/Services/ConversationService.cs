@@ -1,4 +1,4 @@
-using MassTransit;
+using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
 using Pasukhi.Application.DTOs.Conversations;
 using Pasukhi.Application.Interfaces;
@@ -16,13 +16,13 @@ public class ConversationService : IConversationService
 
     private readonly PasukhiDbContext _db;
     private readonly ITenantProvider _tenantProvider;
-    private readonly IPublishEndpoint _bus;
+    private readonly ChannelWriter<OutboundMessageReadyEvent> _outboundWriter;
 
-    public ConversationService(PasukhiDbContext db, ITenantProvider tenantProvider, IPublishEndpoint bus)
+    public ConversationService(PasukhiDbContext db, ITenantProvider tenantProvider, ChannelWriter<OutboundMessageReadyEvent> outboundWriter)
     {
         _db = db;
         _tenantProvider = tenantProvider;
-        _bus = bus;
+        _outboundWriter = outboundWriter;
     }
 
     public async Task<List<ConversationListItemDto>> GetAllAsync(CancellationToken ct = default)
@@ -185,7 +185,7 @@ public class ConversationService : IConversationService
 
         await _db.SaveChangesAsync(ct);
 
-        await _bus.Publish(new OutboundMessageReadyEvent
+        await _outboundWriter.WriteAsync(new OutboundMessageReadyEvent
         {
             BusinessId = businessId,
             MessageId = message.Id,
