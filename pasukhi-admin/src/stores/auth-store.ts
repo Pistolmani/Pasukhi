@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
 interface User {
   id: string
@@ -19,11 +20,19 @@ interface AuthState {
   isSuperAdmin: () => boolean
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
-  user: null,
-  accessToken: null,
-  setAuth: (user, accessToken) => set({ user, accessToken }),
-  clearAuth: () => set({ user: null, accessToken: null }),
-  isAuthenticated: () => get().accessToken !== null,
-  isSuperAdmin: () => get().user?.role === 'SuperAdmin',
-}))
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      user: null,
+      accessToken: null,
+      setAuth: (user, accessToken) => set({ user, accessToken }),
+      clearAuth: () => set({ user: null, accessToken: null }),
+      isAuthenticated: () => get().accessToken !== null,
+      isSuperAdmin: () => get().user?.role === 'SuperAdmin',
+    }),
+    {
+      name: 'pasukhi-auth',
+      partialize: (state) => ({ user: state.user, accessToken: state.accessToken }),
+    },
+  ),
+)

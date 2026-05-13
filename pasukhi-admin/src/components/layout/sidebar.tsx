@@ -78,7 +78,7 @@ export function Sidebar() {
           to: '/conversations',
           label: 'Conversations',
           icon: MessageCircle,
-          badge: conversationsQuery.data?.length ?? 0,
+          badge: conversationsQuery.data?.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0) ?? 0,
         },
         {
           to: '/escalations',

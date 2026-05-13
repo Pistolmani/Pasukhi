@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Bot, Building2, Clock, Download, GitBranch, MessageCircle, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, Bot, Building2, Clock, Download, GitBranch, MessageCircle, Plus, SlidersHorizontal } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { analyticsApi } from '../../api/analytics'
 import { businessesApi } from '../../api/businesses'
+import { channelsApi } from '../../api/channels'
 import { Button } from '../../components/ui/button'
 import { useAuthStore } from '../../stores/auth-store'
-import { channelTypeLabels, channelTypes } from '../../types/channel'
+import { channelTypeLabels } from '../../types/channel'
 import type { DailyBreakdown } from '../../types/analytics'
 
 const ranges = [7, 30] as const
@@ -30,6 +31,11 @@ function OperatorDashboard() {
     queryKey: ['dashboard', days],
     queryFn: () => analyticsApi.getDashboard(days),
   })
+  const channelsQuery = useQuery({
+    queryKey: ['channels'],
+    queryFn: channelsApi.list,
+  })
+  const activeChannels = (channelsQuery.data ?? []).filter((c) => c.isActive)
 
   const stats = dashboardQuery.data
   const autoReplies = (stats?.faqReplies ?? 0) + (stats?.ruleReplies ?? 0) + (stats?.aiReplies ?? 0)
@@ -130,20 +136,25 @@ function OperatorDashboard() {
 
         <section className="card-shadow rounded-2xl border border-border bg-white p-5">
           <h3 className="text-[13px] font-semibold text-slate-950">Channels</h3>
-          <p className="text-[12px] text-slate-500">Live connection status</p>
+          <p className="text-[12px] text-slate-500">Active connection status</p>
           <div className="mt-4 space-y-3">
-            {channelTypes.map((channelType) => {
-              const row = stats?.channelBreakdown.find((item) => item.channelType === channelType)
+            {activeChannels.length === 0 && !channelsQuery.isLoading && (
+              <p className="text-[12.5px] text-slate-500">No channels connected yet.</p>
+            )}
+            {activeChannels.map((channel) => {
+              const row = stats?.channelBreakdown.find((item) => item.channelType === channel.channelType)
               return (
-                <div key={channelType} className="flex items-center gap-3">
+                <div key={channel.id} className="flex items-center gap-3">
                   <div className="flex size-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700">
                     <GitBranch className="size-4" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-medium text-slate-950">
-                      {channelTypeLabels[channelType]}
+                      {channelTypeLabels[channel.channelType]}
                     </div>
-                    <div className="text-[11.5px] text-slate-500">{formatNumber(row?.totalInbound ?? 0)} inbound</div>
+                    <div className="text-[11.5px] text-slate-500">
+                      {channel.externalAccountName || channel.externalAccountId} · {formatNumber(row?.totalInbound ?? 0)} inbound
+                    </div>
                   </div>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
                     <span className="size-1.5 rounded-full bg-emerald-500" />
@@ -153,7 +164,13 @@ function OperatorDashboard() {
               )
             })}
           </div>
-          <Button type="button" variant="outline" className="mt-4 w-full border-dashed">
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-4 w-full border-dashed"
+            onClick={() => navigate('/channels')}
+          >
+            <Plus className="size-3.5" />
             Connect a channel
           </Button>
         </section>
@@ -227,12 +244,20 @@ function PlatformDashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <KpiCard
-          label="Businesses"
+          label="Total businesses"
           value={businesses.length}
           sub={`${formatNumber(activeBusinesses)} active`}
           icon={Building2}
+          loading={businessesQuery.isLoading}
+        />
+        <KpiCard
+          label="Active businesses"
+          value={activeBusinesses}
+          sub={`${formatNumber(businesses.length - activeBusinesses)} inactive`}
+          icon={Building2}
+          tone="emerald"
           loading={businessesQuery.isLoading}
         />
       </div>
@@ -320,16 +345,20 @@ function VolumeChart({ rows, loading }: { rows: DailyBreakdown[]; loading: boole
   const chart = useMemo(() => {
     const data = rows.length
       ? rows
-      : Array.from({ length: 7 }, (_, index) => ({
-          date: `2026-05-${String(index + 1).padStart(2, '0')}`,
-          totalInbound: 0,
-          totalOutbound: 0,
-          faqReplies: 0,
-          ruleReplies: 0,
-          aiReplies: 0,
-          aiTokensUsed: 0,
-          escalations: 0,
-        }))
+      : Array.from({ length: 7 }, (_, index) => {
+          const d = new Date()
+          d.setDate(d.getDate() - (6 - index))
+          return {
+            date: d.toISOString().slice(0, 10),
+            totalInbound: 0,
+            totalOutbound: 0,
+            faqReplies: 0,
+            ruleReplies: 0,
+            aiReplies: 0,
+            aiTokensUsed: 0,
+            escalations: 0,
+          }
+        })
     const width = 720
     const height = 200
     const pad = 28
