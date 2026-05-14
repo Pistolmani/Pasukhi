@@ -148,6 +148,20 @@ body {
       linear-gradient(180deg, #fafaf9 0%, #f2f1ec 100%);
   }
 
+  .auth-bg-animated {
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(79, 70, 229, 0.18), transparent 60%),
+      radial-gradient(800px 500px at 100% 100%, rgba(245, 158, 11, 0.1), transparent 60%),
+      linear-gradient(180deg, #fafaf9 0%, #f2f1ec 100%);
+    animation: auth-breathe 8s ease-in-out infinite alternate;
+  }
+
+  @keyframes auth-breathe {
+    0%   { background-position: 50% -10%, 100% 100%; }
+    50%  { background-position: 48% -6%,  102% 98%; }
+    100% { background-position: 52% -14%, 98%  102%; }
+  }
+
   .card-shadow {
     box-shadow: var(--pa-card-shadow);
   }

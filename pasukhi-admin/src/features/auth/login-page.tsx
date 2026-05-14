@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Sparkles } from 'lucide-react'
+import { Loader2, Sparkles } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -34,9 +34,9 @@ export function LoginPage() {
   }
 
   return (
-    <div className="auth-bg relative flex min-h-screen items-center justify-center overflow-hidden p-6">
+    <div className="auth-bg-animated relative flex min-h-screen items-center justify-center overflow-hidden p-6">
       <div className="absolute left-6 top-6 flex items-center gap-2 text-slate-700">
-        <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-white">
+        <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-white shadow-[0_4px_12px_-4px_rgba(79,70,229,0.5)]">
           <PasukhiMark size={16} />
         </div>
         <div className="leading-tight">
@@ -46,23 +46,23 @@ export function LoginPage() {
       </div>
 
       <div className="absolute right-6 top-6 hidden text-[12.5px] text-slate-500 sm:block">
-        Need an account? <span className="ml-1 font-medium text-indigo-600">Contact sales</span>
+        Need an account? <span className="ml-1 font-medium text-indigo-600 transition-colors hover:text-indigo-700">Contact sales</span>
       </div>
 
-      <div className="w-full max-w-[420px]">
+      <div className="animate-in fade-in slide-in-from-bottom-4 w-full max-w-[420px] duration-500">
         <form
           onSubmit={handleSubmit(onSubmit)}
-          className="card-shadow rounded-3xl border border-border bg-white p-8"
+          className="rounded-3xl border border-white/80 bg-white/90 p-8 shadow-[0_2px_0_rgba(255,255,255,0.8)_inset,0_1px_2px_rgba(15,23,42,0.04),0_8px_32px_-8px_rgba(15,23,42,0.12),0_32px_64px_-24px_rgba(79,70,229,0.12)] backdrop-blur-sm"
         >
-          <div className="relative mx-auto mb-6 flex size-16 items-center justify-center rounded-2xl bg-primary text-white">
+          <div className="relative mx-auto mb-6 flex size-16 items-center justify-center rounded-2xl bg-primary text-white shadow-[0_8px_20px_-6px_rgba(79,70,229,0.6)]">
             <PasukhiMark size={20} />
-            <div className="absolute -bottom-1.5 -right-1.5 flex size-6 items-center justify-center rounded-lg bg-amber-400 text-slate-900 ring-4 ring-white">
+            <div className="absolute -bottom-1.5 -right-1.5 flex size-6 animate-pulse items-center justify-center rounded-lg bg-amber-400 text-slate-900 ring-4 ring-white">
               <Sparkles className="size-3" />
             </div>
           </div>
 
           <div className="space-y-1 text-center">
-            <h1 className="text-[22px] font-semibold tracking-tight text-slate-950">Welcome back</h1>
+            <h1 className="text-[22px] font-semibold tracking-tighter text-slate-950">Welcome back</h1>
             <p className="text-[13.5px] text-slate-500">Sign in to manage your inbox and bot.</p>
           </div>
 
@@ -75,7 +75,7 @@ export function LoginPage() {
                 id="email"
                 type="email"
                 autoComplete="email"
-                className="h-10 border-border bg-white text-[13.5px] focus-visible:ring-indigo-500/20"
+                className="h-10 border-border bg-white text-[13.5px] transition-shadow duration-150 focus-visible:shadow-[0_0_0_3px_rgba(79,70,229,0.12)] focus-visible:ring-indigo-500/30"
                 {...register('email')}
               />
               {errors.email && <p className="text-xs text-rose-600">{errors.email.message}</p>}
@@ -86,19 +86,19 @@ export function LoginPage() {
                 <Label htmlFor="password" className="text-[12px] font-medium text-slate-600">
                   Password
                 </Label>
-                <span className="text-[11.5px] font-medium text-indigo-600">Forgot?</span>
+                <span className="cursor-pointer text-[11.5px] font-medium text-indigo-600 transition-colors hover:text-indigo-700">Forgot?</span>
               </div>
               <Input
                 id="password"
                 type="password"
                 autoComplete="current-password"
-                className="h-10 border-border bg-white text-[13.5px] focus-visible:ring-indigo-500/20"
+                className="h-10 border-border bg-white text-[13.5px] transition-shadow duration-150 focus-visible:shadow-[0_0_0_3px_rgba(79,70,229,0.12)] focus-visible:ring-indigo-500/30"
                 {...register('password')}
               />
               {errors.password && <p className="text-xs text-rose-600">{errors.password.message}</p>}
             </div>
 
-            <label className="flex items-center gap-2 pt-1 text-[12.5px] text-slate-600">
+            <label className="flex cursor-pointer items-center gap-2 pt-1 text-[12.5px] text-slate-600">
               <input
                 type="checkbox"
                 defaultChecked
@@ -110,10 +110,17 @@ export function LoginPage() {
             <Button
               type="submit"
               size="lg"
-              className="mt-2 h-11 w-full shadow-[0_6px_18px_-8px_rgba(79,70,229,.55),inset_0_1px_0_rgba(255,255,255,.18)]"
+              className="mt-2 h-11 w-full transition-all duration-150 hover:-translate-y-px hover:shadow-[0_8px_24px_-8px_rgba(79,70,229,0.65)] active:translate-y-0 shadow-[0_6px_18px_-8px_rgba(79,70,229,.55),inset_0_1px_0_rgba(255,255,255,.18)]"
               disabled={isSubmitting}
             >
-              {isSubmitting ? 'Signing in...' : 'Sign in'}
+              {isSubmitting ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="size-4 animate-spin" />
+                  Signing in…
+                </span>
+              ) : (
+                'Sign in'
+              )}
             </Button>
 
             <div className="flex items-center gap-3 py-1">
@@ -122,7 +129,11 @@ export function LoginPage() {
               <div className="h-px flex-1 bg-border" />
             </div>
 
-            <Button type="button" variant="outline" className="h-10 w-full gap-2 bg-white text-[13px] text-slate-700">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 w-full gap-2 bg-white text-[13px] text-slate-700 transition-all duration-150 hover:bg-slate-50 hover:shadow-sm"
+            >
               <span className="size-4 rounded-sm bg-gradient-to-br from-pink-600 via-orange-500 to-amber-300" />
               Continue with Meta Business
             </Button>
@@ -130,8 +141,8 @@ export function LoginPage() {
         </form>
 
         <div className="mt-4 text-center text-[11.5px] text-slate-500">
-          By signing in you agree to our <span className="underline decoration-dotted">Terms</span> and{' '}
-          <span className="underline decoration-dotted">Privacy</span>.
+          By signing in you agree to our <span className="cursor-pointer underline decoration-dotted hover:text-slate-700">Terms</span> and{' '}
+          <span className="cursor-pointer underline decoration-dotted hover:text-slate-700">Privacy</span>.
         </div>
       </div>
     </div>
