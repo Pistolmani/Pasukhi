@@ -60,6 +60,21 @@ const LoginPage = lazy(() =>
     default: module.LoginPage,
   })),
 )
+const ForgotPasswordPage = lazy(() =>
+  import('./features/auth/forgot-password-page').then((module) => ({
+    default: module.ForgotPasswordPage,
+  })),
+)
+const PrivacyPage = lazy(() =>
+  import('./features/legal/privacy-page').then((module) => ({
+    default: module.PrivacyPage,
+  })),
+)
+const TermsPage = lazy(() =>
+  import('./features/legal/terms-page').then((module) => ({
+    default: module.TermsPage,
+  })),
+)
 const RulesPage = lazy(() =>
   import('./features/rules/rules-page').then((module) => ({
     default: module.RulesPage,
@@ -81,6 +96,9 @@ function App() {
     <Suspense fallback={null}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
         <Route element={<AuthGuard />}>
           <Route element={<AppLayout />}>
             <Route index element={<DashboardPage />} />

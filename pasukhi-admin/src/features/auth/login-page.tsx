@@ -1,7 +1,8 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Sparkles, Loader2, CheckCircle2, MessageSquare, Bot } from 'lucide-react'
+import { Bot, CheckCircle2, Eye, EyeOff, Loader2, MessageSquare, Sparkles } from 'lucide-react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { authApi } from '../../api/auth'
 import { PasukhiMark } from '../../components/brand/pasukhi-mark'
@@ -14,10 +15,12 @@ import { useAuthStore } from '../../stores/auth-store'
 export function LoginPage() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((state) => state.setAuth)
+  const [showPassword, setShowPassword] = useState(false)
 
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -29,14 +32,18 @@ export function LoginPage() {
       setAuth(result.user, result.accessToken)
       navigate('/')
     } catch {
-      toast.error('Invalid email or password')
+      setError('root', { message: 'Invalid email or password' })
     }
   }
 
+  const handleMetaClick = () => {
+    toast.info('Meta Business sign-in coming soon')
+  }
+
   return (
-    <div className="flex min-h-screen w-full bg-white">
+    <div className="flex min-h-screen w-full bg-stone-50">
       {/* Left side - Login Form */}
-      <div className="flex flex-1 flex-col justify-center px-6 py-12 sm:px-12 lg:flex-none lg:w-[480px] xl:w-[560px]">
+      <div className="flex flex-1 flex-col justify-center bg-stone-50 px-6 py-12 sm:px-12 lg:flex-none lg:w-[480px] lg:border-r lg:border-slate-200/70 xl:w-[560px]">
         <div className="mx-auto w-full max-w-[380px]">
           {/* Mobile Header (Hidden on Desktop) */}
           <div className="mb-10 flex items-center gap-2 text-slate-900 lg:hidden">
@@ -49,7 +56,7 @@ export function LoginPage() {
           <div className="mb-8">
             <div className="relative mb-6 flex size-14 items-center justify-center rounded-2xl bg-primary text-white shadow-lg shadow-indigo-500/20">
               <PasukhiMark size={20} />
-              <div className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-md bg-amber-400 text-slate-900 ring-4 ring-white">
+              <div className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-md bg-amber-400 text-slate-900 ring-4 ring-stone-50">
                 <Sparkles className="size-3 animate-pulse" />
               </div>
             </div>
@@ -67,7 +74,7 @@ export function LoginPage() {
                 id="email"
                 type="email"
                 autoComplete="email"
-                className="h-11 border-slate-200 bg-slate-50/50 text-[14px] transition-all duration-200 hover:bg-white focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10"
+                className="h-11 border-slate-200 bg-white text-[14px] transition-all duration-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
                 {...register('email')}
               />
               {errors.email && <p className="text-xs text-rose-600">{errors.email.message}</p>}
@@ -78,17 +85,30 @@ export function LoginPage() {
                 <Label htmlFor="password" className="text-[12.5px] font-medium text-slate-700">
                   Password
                 </Label>
-                <span className="cursor-pointer text-[12px] font-medium text-indigo-600 transition-colors hover:text-indigo-700">
+                <Link
+                  to="/forgot-password"
+                  className="text-[12px] font-medium text-indigo-600 transition-colors hover:text-indigo-700 hover:underline"
+                >
                   Forgot password?
-                </span>
+                </Link>
               </div>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                className="h-11 border-slate-200 bg-slate-50/50 text-[14px] transition-all duration-200 hover:bg-white focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10"
-                {...register('password')}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  className="h-11 border-slate-200 bg-white pr-10 text-[14px] transition-all duration-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
+                  {...register('password')}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
               {errors.password && <p className="text-xs text-rose-600">{errors.password.message}</p>}
             </div>
 
@@ -100,6 +120,12 @@ export function LoginPage() {
               />
               Keep me signed in
             </label>
+
+            {errors.root && (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-center text-[12.5px] font-medium text-rose-700">
+                {errors.root.message}
+              </div>
+            )}
 
             <Button
               type="submit"
@@ -125,8 +151,9 @@ export function LoginPage() {
 
             <Button
               type="button"
+              onClick={handleMetaClick}
               variant="outline"
-              className="group h-11 w-full gap-2.5 border-slate-200 bg-white text-[13.5px] font-medium text-slate-700 transition-all hover:bg-slate-50"
+              className="group h-11 w-full gap-2.5 border-slate-200 bg-white text-[13.5px] font-medium text-slate-700 transition-all hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm"
             >
               <span className="relative flex size-4 items-center justify-center overflow-hidden rounded-sm bg-gradient-to-br from-pink-600 via-orange-500 to-amber-300">
                 <span className="absolute inset-0 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100" />
@@ -137,7 +164,12 @@ export function LoginPage() {
 
           <div className="mt-8 text-[12.5px] text-slate-500">
             Don&apos;t have an account?{' '}
-            <span className="cursor-pointer font-medium text-indigo-600 hover:text-indigo-700">Contact sales</span>
+            <a
+              href="mailto:hello@pasukhi.com"
+              className="font-medium text-indigo-600 transition-colors hover:text-indigo-700 hover:underline"
+            >
+              Contact sales
+            </a>
           </div>
         </div>
       </div>
@@ -147,7 +179,7 @@ export function LoginPage() {
         {/* Dynamic Glows */}
         <div className="absolute -left-1/4 -top-1/4 size-[800px] rounded-full bg-indigo-600/20 blur-[120px]" />
         <div className="absolute -bottom-1/4 -right-1/4 size-[800px] rounded-full bg-amber-500/10 blur-[120px]" />
-        
+
         {/* Noise Texture Overlay for Premium Feel */}
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgoJPHJlY3Qgd2lkdGg9IjQiIGhlaWdodD0iNCIgZmlsbD0iI2ZmZiIgZmlsbC1vcGFjaXR5PSIwLjA1Ii8+Cjwvc3ZnPg==')] opacity-20 mix-blend-overlay" />
 
@@ -196,12 +228,16 @@ export function LoginPage() {
               Turn conversations into conversions. Connect your channels, train your AI, and watch your business scale on autopilot.
             </p>
           </div>
-          
+
           <div className="flex items-center justify-between text-[13px] text-slate-500">
             <span>© {new Date().getFullYear()} Pasukhi Inc.</span>
             <div className="flex gap-4">
-              <span className="cursor-pointer hover:text-slate-300">Privacy Policy</span>
-              <span className="cursor-pointer hover:text-slate-300">Terms of Service</span>
+              <Link to="/privacy" className="transition-colors hover:text-slate-300 hover:underline">
+                Privacy Policy
+              </Link>
+              <Link to="/terms" className="transition-colors hover:text-slate-300 hover:underline">
+                Terms of Service
+              </Link>
             </div>
           </div>
         </div>
