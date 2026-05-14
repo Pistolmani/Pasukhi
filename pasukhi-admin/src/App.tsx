@@ -5,6 +5,11 @@ import { AppLayout } from './components/layout/app-layout'
 import { AuthGuard } from './components/layout/auth-guard'
 import { useAuthStore } from './stores/auth-store'
 
+const OnboardingPage = lazy(() =>
+  import('./features/onboarding/onboarding-page').then((module) => ({
+    default: module.OnboardingPage,
+  })),
+)
 const AiSettingsPage = lazy(() =>
   import('./features/ai/ai-settings-page').then((module) => ({
     default: module.AiSettingsPage,
@@ -100,6 +105,7 @@ function App() {
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route element={<AuthGuard />}>
+          <Route path="onboarding" element={<OnboardingRoute />} />
           <Route element={<AppLayout />}>
             <Route index element={<DashboardPage />} />
             <Route
@@ -206,6 +212,13 @@ function App() {
   )
 }
 
+function OnboardingRoute() {
+  const user = useAuthStore((state) => state.user)
+  if (user?.businessId) return <Navigate to="/" replace />
+  if (user?.role === 'SuperAdmin') return <Navigate to="/" replace />
+  return <OnboardingPage />
+}
+
 function RoleRoute({ role, children }: { role: string; children: ReactNode }) {
   const user = useAuthStore((state) => state.user)
   return user?.role === role ? children : <Navigate to="/" replace />
@@ -213,7 +226,7 @@ function RoleRoute({ role, children }: { role: string; children: ReactNode }) {
 
 function BusinessRoute({ children }: { children: ReactNode }) {
   const user = useAuthStore((state) => state.user)
-  return user?.businessId ? children : <Navigate to="/" replace />
+  return user?.businessId ? children : <Navigate to="/onboarding" replace />
 }
 
 export default App

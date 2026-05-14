@@ -9,4 +9,5 @@ public interface IAuthService
     Task<AuthResponse> RefreshTokenAsync(string refreshToken);
     Task LogoutAsync(string userId);
     Task<AdminUserDto> GetCurrentUserAsync(string userId);
+    Task<AuthResponse> SetupBusinessAsync(string userId, string name, string? description);
 }

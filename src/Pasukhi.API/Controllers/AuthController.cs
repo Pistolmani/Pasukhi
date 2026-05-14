@@ -72,6 +72,16 @@ public class AuthController : ControllerBase
     }
 
     [Authorize]
+    [HttpPost("setup-business")]
+    public async Task<IActionResult> SetupBusiness([FromBody] SetupBusinessRequest request)
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value!;
+        var result = await _auth.SetupBusinessAsync(userId, request.Name, request.Description);
+        SetRefreshTokenCookie(result.RawRefreshToken);
+        return Ok(new { accessToken = result.AccessToken, user = result.User });
+    }
+
+    [Authorize]
     [HttpPost("logout")]
     public async Task<IActionResult> Logout()
     {

@@ -177,6 +177,49 @@ public class AuthService : IAuthService
         return Task.FromResult(rawToken);
     }
 
+    public async Task<AuthResponse> SetupBusinessAsync(string userId, string name, string? description)
+    {
+        var user = await _userManager.FindByIdAsync(userId)
+            ?? throw new KeyNotFoundException("User not found.");
+
+        if (user.BusinessId.HasValue)
+            throw new InvalidOperationException("User already has a business.");
+
+        var slug = GenerateSlug(name);
+        if (await _db.Businesses.AnyAsync(b => b.Slug == slug))
+            slug = $"{slug}-{Guid.NewGuid().ToString()[..6]}";
+
+        var business = new Business
+        {
+            Id = Guid.NewGuid(),
+            Name = name,
+            Slug = slug,
+            Description = description,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _db.Businesses.Add(business);
+
+        user.BusinessId = business.Id;
+        await _userManager.UpdateAsync(user);
+        await _db.SaveChangesAsync();
+
+        var roles = await _userManager.GetRolesAsync(user);
+        var accessToken = GenerateAccessToken(user, roles);
+        var rawRefreshToken = await CreateRefreshTokenAsync(user.Id);
+        await _db.SaveChangesAsync();
+
+        return new AuthResponse(accessToken, rawRefreshToken, await ToDtoAsync(user, roles));
+    }
+
+    private static string GenerateSlug(string name)
+    {
+        var slug = name.ToLowerInvariant().Replace(" ", "-");
+        slug = System.Text.RegularExpressions.Regex.Replace(slug, @"[^a-z0-9-]", "");
+        slug = System.Text.RegularExpressions.Regex.Replace(slug, @"-+", "-");
+        return slug.Trim('-');
+    }
+
     public static string HashRefreshToken(string rawToken) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawToken)));
 
