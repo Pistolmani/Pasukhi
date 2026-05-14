@@ -42,6 +42,49 @@ public class AuthService : IAuthService
         return new AuthResponse(accessToken, rawRefreshToken, await ToDtoAsync(user, roles));
     }
 
+    public async Task<AuthResponse> ExternalLoginAsync(string provider, string providerId, string email, string firstName, string lastName)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u =>
+            u.ExternalProvider == provider && u.ExternalProviderId == providerId);
+
+        if (user == null && !string.IsNullOrEmpty(email))
+        {
+            user = await _userManager.FindByEmailAsync(email);
+            if (user != null)
+            {
+                user.ExternalProvider = provider;
+                user.ExternalProviderId = providerId;
+                await _userManager.UpdateAsync(user);
+            }
+        }
+
+        if (user == null)
+        {
+            user = new AdminUser
+            {
+                UserName = email,
+                Email = email,
+                FirstName = firstName,
+                LastName = lastName,
+                ExternalProvider = provider,
+                ExternalProviderId = providerId,
+                CreatedAt = DateTime.UtcNow,
+            };
+            var result = await _userManager.CreateAsync(user);
+            if (!result.Succeeded)
+                throw new InvalidOperationException($"Failed to create user: {string.Join(", ", result.Errors.Select(e => e.Description))}");
+
+            await _userManager.AddToRoleAsync(user, "Operator");
+        }
+
+        var roles = await _userManager.GetRolesAsync(user);
+        var accessToken = GenerateAccessToken(user, roles);
+        var rawRefreshToken = await CreateRefreshTokenAsync(user.Id);
+        await _db.SaveChangesAsync();
+
+        return new AuthResponse(accessToken, rawRefreshToken, await ToDtoAsync(user, roles));
+    }
+
     public async Task<AuthResponse> RefreshTokenAsync(string tokenHash)
     {
         var storedToken = await _db.RefreshTokens

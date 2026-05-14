@@ -9,4 +9,6 @@ public class AdminUser : IdentityUser
     public Guid? BusinessId { get; set; }
     public Business? Business { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? ExternalProvider { get; set; }
+    public string? ExternalProviderId { get; set; }
 }

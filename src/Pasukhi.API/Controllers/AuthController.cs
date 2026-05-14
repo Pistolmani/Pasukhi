@@ -11,11 +11,13 @@ namespace Pasukhi.API.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _auth;
+    private readonly IMetaOAuthService _metaOAuth;
     private readonly IConfiguration _config;
 
-    public AuthController(IAuthService auth, IConfiguration config)
+    public AuthController(IAuthService auth, IMetaOAuthService metaOAuth, IConfiguration config)
     {
         _auth = auth;
+        _metaOAuth = metaOAuth;
         _config = config;
     }
 
@@ -23,6 +25,19 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         var result = await _auth.LoginAsync(request);
+        SetRefreshTokenCookie(result.RawRefreshToken);
+        return Ok(new { accessToken = result.AccessToken, user = result.User });
+    }
+
+    [HttpPost("meta-callback")]
+    public async Task<IActionResult> MetaCallback([FromBody] MetaCallbackRequest request)
+    {
+        var accessToken = await _metaOAuth.ExchangeCodeForTokenAsync(request.Code, request.RedirectUri);
+        var profile = await _metaOAuth.GetUserProfileAsync(accessToken);
+
+        var result = await _auth.ExternalLoginAsync(
+            "Meta", profile.Id, profile.Email, profile.FirstName, profile.LastName);
+
         SetRefreshTokenCookie(result.RawRefreshToken);
         return Ok(new { accessToken = result.AccessToken, user = result.User });
     }
