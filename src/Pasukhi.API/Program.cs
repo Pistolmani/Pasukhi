@@ -95,6 +95,7 @@ builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.Configure<BotReadinessOptions>(builder.Configuration.GetSection("BotReadiness"));
 builder.Services.AddScoped<IBotReadinessService, BotReadinessService>();
 builder.Services.AddHttpClient<IMetaOAuthService, MetaOAuthService>();
+builder.Services.AddHttpClient<IGoogleOAuthService, GoogleOAuthService>();
 builder.Services.AddScoped<IWebhookSignatureVerifier, WebhookSignatureVerifier>();
 builder.Services.AddScoped<IWebhookResolver, WebhookResolver>();
 builder.Services.AddScoped<IMetaWebhookParser, MetaWebhookParser>();

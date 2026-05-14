@@ -12,12 +12,14 @@ public class AuthController : ControllerBase
 {
     private readonly IAuthService _auth;
     private readonly IMetaOAuthService _metaOAuth;
+    private readonly IGoogleOAuthService _googleOAuth;
     private readonly IConfiguration _config;
 
-    public AuthController(IAuthService auth, IMetaOAuthService metaOAuth, IConfiguration config)
+    public AuthController(IAuthService auth, IMetaOAuthService metaOAuth, IGoogleOAuthService googleOAuth, IConfiguration config)
     {
         _auth = auth;
         _metaOAuth = metaOAuth;
+        _googleOAuth = googleOAuth;
         _config = config;
     }
 
@@ -37,6 +39,19 @@ public class AuthController : ControllerBase
 
         var result = await _auth.ExternalLoginAsync(
             "Meta", profile.Id, profile.Email, profile.FirstName, profile.LastName);
+
+        SetRefreshTokenCookie(result.RawRefreshToken);
+        return Ok(new { accessToken = result.AccessToken, user = result.User });
+    }
+
+    [HttpPost("google-callback")]
+    public async Task<IActionResult> GoogleCallback([FromBody] GoogleCallbackRequest request)
+    {
+        var accessToken = await _googleOAuth.ExchangeCodeForTokenAsync(request.Code, request.RedirectUri);
+        var profile = await _googleOAuth.GetUserProfileAsync(accessToken);
+
+        var result = await _auth.ExternalLoginAsync(
+            "Google", profile.Id, profile.Email, profile.FirstName, profile.LastName);
 
         SetRefreshTokenCookie(result.RawRefreshToken);
         return Ok(new { accessToken = result.AccessToken, user = result.User });

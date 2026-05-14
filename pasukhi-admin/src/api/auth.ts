@@ -25,6 +25,8 @@ export const authApi = {
     api.post<AuthResponse>('/api/auth/login', data).then((response) => response.data),
   metaCallback: (code: string, redirectUri: string) =>
     api.post<AuthResponse>('/api/auth/meta-callback', { code, redirectUri }).then((response) => response.data),
+  googleCallback: (code: string, redirectUri: string) =>
+    api.post<AuthResponse>('/api/auth/google-callback', { code, redirectUri }).then((response) => response.data),
   logout: () => api.post('/api/auth/logout'),
   me: () => api.get<User>('/api/auth/me').then((response) => response.data),
 }
