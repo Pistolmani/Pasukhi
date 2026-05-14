@@ -1,8 +1,8 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Bot, CheckCircle2, Eye, EyeOff, Loader2, MessageSquare, Sparkles } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Bot, CheckCircle2, Eye, EyeOff, MessageSquare, Sparkles } from 'lucide-react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { authApi } from '../../api/auth'
 import { PasukhiMark } from '../../components/brand/pasukhi-mark'
 import { Button } from '../../components/ui/button'
@@ -16,7 +16,6 @@ export function LoginPage() {
   const [searchParams] = useSearchParams()
   const setAuth = useAuthStore((state) => state.setAuth)
   const [showPassword, setShowPassword] = useState(false)
-  const [metaLoading, setMetaLoading] = useState(false)
 
   const {
     register,
@@ -27,24 +26,6 @@ export function LoginPage() {
     resolver: zodResolver(loginSchema),
   })
 
-  useEffect(() => {
-    const code = searchParams.get('code')
-    if (!code) return
-
-    setMetaLoading(true)
-    authApi
-      .metaCallback(code, window.location.origin + '/login')
-      .then((result) => {
-        setAuth(result.user, result.accessToken)
-        navigate('/', { replace: true })
-      })
-      .catch(() => {
-        setError('root', { message: 'Meta sign-in failed. Please try again.' })
-        setMetaLoading(false)
-        window.history.replaceState({}, '', '/login')
-      })
-  }, [searchParams, setAuth, navigate, setError])
-
   const onSubmit = async (data: LoginFormData) => {
     try {
       const result = await authApi.login(data)
@@ -53,22 +34,6 @@ export function LoginPage() {
     } catch {
       setError('root', { message: 'Invalid email or password' })
     }
-  }
-
-  const handleMetaClick = () => {
-    const appId = import.meta.env.VITE_META_APP_ID
-    if (!appId) {
-      setError('root', { message: 'Meta Business sign-in is not configured yet.' })
-      return
-    }
-    const params = new URLSearchParams({
-      client_id: appId,
-      redirect_uri: window.location.origin + '/login',
-      scope: 'email,public_profile',
-      response_type: 'code',
-      state: crypto.randomUUID(),
-    })
-    window.location.href = `https://www.facebook.com/v21.0/dialog/oauth?${params}`
   }
 
   return (
@@ -174,33 +139,6 @@ export function LoginPage() {
               )}
             </Button>
 
-            <div className="flex items-center gap-4 py-3">
-              <div className="h-px flex-1 bg-slate-100" />
-              <span className="text-[11px] font-medium uppercase tracking-widest text-slate-400">or</span>
-              <div className="h-px flex-1 bg-slate-100" />
-            </div>
-
-            <Button
-              type="button"
-              onClick={handleMetaClick}
-              variant="outline"
-              className="group h-11 w-full gap-2.5 border-slate-200 bg-white text-[13.5px] font-medium text-slate-700 transition-all hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm"
-              disabled={metaLoading}
-            >
-              {metaLoading ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Connecting to Meta...
-                </>
-              ) : (
-                <>
-                  <span className="relative flex size-4 items-center justify-center overflow-hidden rounded-sm bg-gradient-to-br from-pink-600 via-orange-500 to-amber-300">
-                    <span className="absolute inset-0 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100" />
-                  </span>
-                  Continue with Meta Business
-                </>
-              )}
-            </Button>
           </form>
 
           <div className="mt-8 text-[12.5px] text-slate-500">
