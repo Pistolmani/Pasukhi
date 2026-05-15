@@ -101,6 +101,9 @@ export function ChannelStep({ onNext }: { onNext: () => void }) {
           <Label className="text-[12.5px] font-medium text-slate-700">
             External account ID <span className="text-rose-500">*</span>
           </Label>
+          <p className="text-[12px] text-slate-400">
+            The numeric ID of your Instagram account or Facebook Page (found in Business Settings).
+          </p>
           <Input
             placeholder="e.g. 17841401234567890"
             value={form.externalAccountId}
@@ -113,6 +116,9 @@ export function ChannelStep({ onNext }: { onNext: () => void }) {
           <Label className="text-[12.5px] font-medium text-slate-700">
             Account name <span className="font-normal text-slate-400">(optional)</span>
           </Label>
+          <p className="text-[12px] text-slate-400">
+            Display name or handle — only used inside Pasukhi for your reference.
+          </p>
           <Input
             placeholder="@yourhandle"
             value={form.externalAccountName}
@@ -125,9 +131,13 @@ export function ChannelStep({ onNext }: { onNext: () => void }) {
           <Label className="text-[12.5px] font-medium text-slate-700">
             Access token <span className="text-rose-500">*</span>
           </Label>
+          <p className="text-[12px] text-slate-400">
+            A long-lived Page Access Token from your Meta app (valid 60 days). Must have the{' '}
+            <code className="rounded bg-slate-100 px-1">pages_messaging</code> permission.
+          </p>
           <Input
             type="password"
-            placeholder="Long-lived page access token"
+            placeholder="Paste your long-lived page access token"
             value={form.accessToken}
             onChange={(e) => setForm({ ...form, accessToken: e.target.value })}
             className="h-11 border-slate-200 bg-white text-[14px]"
@@ -138,8 +148,11 @@ export function ChannelStep({ onNext }: { onNext: () => void }) {
           <Label className="text-[12.5px] font-medium text-slate-700">
             Verify token <span className="font-normal text-slate-400">(optional)</span>
           </Label>
+          <p className="text-[12px] text-slate-400">
+            A random string you choose and paste into both Meta&apos;s webhook settings and here — so Meta can verify the connection.
+          </p>
           <Input
-            placeholder="Webhook verify token"
+            placeholder="e.g. pasukhi_verify_abc123"
             value={form.verifyToken}
             onChange={(e) => setForm({ ...form, verifyToken: e.target.value })}
             className="h-11 border-slate-200 bg-white text-[14px]"
@@ -155,20 +168,105 @@ export function ChannelStep({ onNext }: { onNext: () => void }) {
           <ChevronDown className={`size-4 transition-transform ${showHelp ? 'rotate-180' : ''}`} />
         </button>
         {showHelp && (
-          <div className="rounded-xl bg-slate-50 px-4 py-3 text-[13px] leading-relaxed text-slate-600 ring-1 ring-slate-200/60">
-            Open{' '}
-            <a
-              href="https://business.facebook.com/"
-              target="_blank"
-              rel="noreferrer"
-              className="font-medium text-indigo-600 hover:underline"
-            >
-              Meta Business Suite
-            </a>
-            , go to <strong>Settings → Accounts</strong>, pick your Instagram or Facebook Page, and
-            copy its ID. The access token comes from your Meta app dashboard → <strong>Generate
-            token</strong>. Pick a long-lived page token with the <code>pages_messaging</code>{' '}
-            scope.
+          <div className="space-y-4 rounded-xl bg-slate-50 px-4 py-4 text-[13px] leading-relaxed text-slate-600 ring-1 ring-slate-200/60">
+            <div>
+              <p className="mb-2 font-semibold text-slate-800">Step 1 — Create a Meta App</p>
+              <ol className="list-decimal space-y-1 pl-4">
+                <li>
+                  Go to{' '}
+                  <a
+                    href="https://developers.facebook.com/apps"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-indigo-600 hover:underline"
+                  >
+                    developers.facebook.com/apps
+                  </a>
+                </li>
+                <li>Click <strong>Create App</strong> → choose <strong>Business</strong> type</li>
+                <li>Give it a name (e.g. "Pasukhi Bot") and link it to your Business portfolio</li>
+              </ol>
+            </div>
+
+            <div>
+              <p className="mb-2 font-semibold text-slate-800">Step 2 — Add Messenger or Instagram product</p>
+              <ol className="list-decimal space-y-1 pl-4">
+                <li>Inside your app, click <strong>Add Product</strong> in the left sidebar</li>
+                <li>
+                  Find <strong>Messenger</strong> (for Facebook Pages) or{' '}
+                  <strong>Instagram</strong> (for Instagram accounts) and click <strong>Set Up</strong>
+                </li>
+                <li>Connect your Facebook Page or Instagram Business account when prompted</li>
+              </ol>
+            </div>
+
+            <div>
+              <p className="mb-2 font-semibold text-slate-800">Step 3 — Get the External Account ID</p>
+              <ol className="list-decimal space-y-1 pl-4">
+                <li>
+                  For <strong>Instagram</strong>: go to{' '}
+                  <a
+                    href="https://business.facebook.com/settings/instagram-accounts"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-indigo-600 hover:underline"
+                  >
+                    Business Settings → Instagram Accounts
+                  </a>
+                  , click your account — the ID is in the URL (a long number)
+                </li>
+                <li>
+                  For <strong>Messenger</strong>: go to{' '}
+                  <a
+                    href="https://business.facebook.com/settings/pages"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-indigo-600 hover:underline"
+                  >
+                    Business Settings → Pages
+                  </a>
+                  , click your Page → the Page ID is shown below the page name
+                </li>
+              </ol>
+            </div>
+
+            <div>
+              <p className="mb-2 font-semibold text-slate-800">Step 4 — Generate the Access Token</p>
+              <ol className="list-decimal space-y-1 pl-4">
+                <li>In your Meta app, go to <strong>Messenger → Settings</strong> (or <strong>Instagram → Settings</strong>)</li>
+                <li>Scroll to <strong>Access Tokens</strong> and click <strong>Generate Token</strong> next to your page/account</li>
+                <li>
+                  Copy the token — this is a <em>short-lived</em> token (expires in 1 hour). To make it permanent, use the{' '}
+                  <a
+                    href="https://developers.facebook.com/tools/explorer/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-indigo-600 hover:underline"
+                  >
+                    Graph API Explorer
+                  </a>{' '}
+                  → click <strong>Generate Long-Lived Token</strong> (valid for 60 days)
+                </li>
+                <li>Make sure the token has the <code className="rounded bg-slate-200 px-1">pages_messaging</code> permission</li>
+              </ol>
+            </div>
+
+            <div>
+              <p className="mb-2 font-semibold text-slate-800">Step 5 — Set the Verify Token</p>
+              <ol className="list-decimal space-y-1 pl-4">
+                <li>Make up any random string, e.g. <code className="rounded bg-slate-200 px-1">pasukhi_verify_123</code></li>
+                <li>Paste that same string here and in the <strong>Webhook → Verify Token</strong> field in your Meta app</li>
+                <li>The Webhooks page in Pasukhi (sidebar → Webhooks) shows the full webhook URL to paste into Meta</li>
+              </ol>
+            </div>
+
+            <p className="border-t border-slate-200 pt-3 text-[12px] text-slate-400">
+              Need help? Email{' '}
+              <a href="mailto:hello@pasukhi.com" className="text-indigo-600 hover:underline">
+                hello@pasukhi.com
+              </a>{' '}
+              and we'll walk you through it.
+            </p>
           </div>
         )}
 
