@@ -22,15 +22,17 @@ public class ExceptionHandlingMiddleware
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(ex, "Unauthorized access");
-            await WriteErrorAsync(context, 401, ex.Message);
+            await WriteErrorAsync(context, 401, "Unauthorized.");
         }
         catch (KeyNotFoundException ex)
         {
-            await WriteErrorAsync(context, 404, ex.Message);
+            _logger.LogInformation(ex, "Resource not found");
+            await WriteErrorAsync(context, 404, "Resource not found.");
         }
         catch (InvalidOperationException ex)
         {
-            await WriteErrorAsync(context, 400, ex.Message);
+            _logger.LogWarning(ex, "Invalid operation");
+            await WriteErrorAsync(context, 400, "The request could not be completed.");
         }
         catch (Exception ex)
         {

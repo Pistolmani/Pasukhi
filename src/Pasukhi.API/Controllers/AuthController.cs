@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Pasukhi.Application.DTOs.Auth;
 using Pasukhi.Application.Interfaces;
 using Pasukhi.Infrastructure.Services;
@@ -8,6 +9,7 @@ namespace Pasukhi.API.Controllers;
 
 [ApiController]
 [Route("api/auth")]
+[EnableRateLimiting("auth")]
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _auth;

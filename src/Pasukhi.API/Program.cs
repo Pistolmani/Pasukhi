@@ -1,9 +1,12 @@
+using System.Net;
 using System.Text;
 using System.Threading.Channels;
+using System.Threading.RateLimiting;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Pasukhi.API.Middleware;
@@ -140,6 +143,31 @@ builder.Services.AddScoped<OutboundMessageConsumer>();
 builder.Services.AddHostedService<InboundMessageBackgroundService>();
 builder.Services.AddHostedService<OutboundMessageBackgroundService>();
 
+builder.Services.AddHostedService<RefreshTokenCleanupService>();
+
+builder.Services.AddRateLimiter(options =>
+{
+    // Strict limit for auth endpoints — 10 requests per minute per IP
+    options.AddFixedWindowLimiter("auth", cfg =>
+    {
+        cfg.Window = TimeSpan.FromMinutes(1);
+        cfg.PermitLimit = 10;
+        cfg.QueueLimit = 0;
+        cfg.AutoReplenishment = true;
+    });
+
+    // Relaxed limit for webhook ingestion — Meta can send bursts
+    options.AddFixedWindowLimiter("webhook", cfg =>
+    {
+        cfg.Window = TimeSpan.FromSeconds(10);
+        cfg.PermitLimit = 50;
+        cfg.QueueLimit = 0;
+        cfg.AutoReplenishment = true;
+    });
+
+    options.RejectionStatusCode = (int)HttpStatusCode.TooManyRequests;
+});
+
 builder.Services.AddControllers();
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<LoginRequestValidator>();
@@ -162,7 +190,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseSerilogRequestLogging();
+app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseRateLimiter();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
