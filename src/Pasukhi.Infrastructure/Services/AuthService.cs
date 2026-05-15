@@ -29,10 +29,20 @@ public class AuthService : IAuthService
     public async Task<AuthResponse> LoginAsync(LoginRequest request)
     {
         var user = await _userManager.FindByEmailAsync(request.Email);
-        if (user == null || !await _userManager.CheckPasswordAsync(user, request.Password))
+
+        if (user == null)
+            throw new UnauthorizedAccessException("Invalid email or password.");
+
+        if (await _userManager.IsLockedOutAsync(user))
+            throw new UnauthorizedAccessException("Account is temporarily locked. Try again later.");
+
+        if (!await _userManager.CheckPasswordAsync(user, request.Password))
         {
+            await _userManager.AccessFailedAsync(user);
             throw new UnauthorizedAccessException("Invalid email or password.");
         }
+
+        await _userManager.ResetAccessFailedCountAsync(user);
 
         var roles = await _userManager.GetRolesAsync(user);
         var accessToken = GenerateAccessToken(user, roles);

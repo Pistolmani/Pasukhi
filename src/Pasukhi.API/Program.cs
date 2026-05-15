@@ -41,11 +41,17 @@ builder.Services.AddIdentity<AdminUser, IdentityRole>(options =>
     options.Password.RequireUppercase = true;
     options.Password.RequiredLength = 8;
     options.User.RequireUniqueEmail = true;
+    options.Lockout.AllowedForNewUsers = true;
+    options.Lockout.MaxFailedAccessAttempts = 5;
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
 })
 .AddEntityFrameworkStores<PasukhiDbContext>()
 .AddDefaultTokenProviders();
 
-var jwtSecret = builder.Configuration["Jwt:Secret"]!;
+var jwtSecret = builder.Configuration["Jwt:Secret"];
+if (string.IsNullOrWhiteSpace(jwtSecret) || jwtSecret.Length < 32)
+    throw new InvalidOperationException("Jwt:Secret must be at least 32 characters. Set it via the Jwt__Secret environment variable.");
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -61,7 +67,7 @@ builder.Services.AddAuthentication(options =>
         ValidateIssuerSigningKey = true,
         ValidIssuer = builder.Configuration["Jwt:Issuer"],
         ValidAudience = builder.Configuration["Jwt:Audience"],
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret!)),
         ClockSkew = TimeSpan.Zero
     };
 });
@@ -147,23 +153,29 @@ builder.Services.AddHostedService<RefreshTokenCleanupService>();
 
 builder.Services.AddRateLimiter(options =>
 {
-    // Strict limit for auth endpoints — 10 requests per minute per IP
-    options.AddFixedWindowLimiter("auth", cfg =>
-    {
-        cfg.Window = TimeSpan.FromMinutes(1);
-        cfg.PermitLimit = 10;
-        cfg.QueueLimit = 0;
-        cfg.AutoReplenishment = true;
-    });
+    // Per-IP: 10 auth requests per minute (login, refresh, OAuth callbacks)
+    options.AddPolicy("auth", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromMinutes(1),
+                PermitLimit = 10,
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
 
-    // Relaxed limit for webhook ingestion — Meta can send bursts
-    options.AddFixedWindowLimiter("webhook", cfg =>
-    {
-        cfg.Window = TimeSpan.FromSeconds(10);
-        cfg.PermitLimit = 50;
-        cfg.QueueLimit = 0;
-        cfg.AutoReplenishment = true;
-    });
+    // Per-IP: 50 webhook requests per 10 seconds — Meta can send bursts
+    options.AddPolicy("webhook", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromSeconds(10),
+                PermitLimit = 50,
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
 
     options.RejectionStatusCode = (int)HttpStatusCode.TooManyRequests;
 });
