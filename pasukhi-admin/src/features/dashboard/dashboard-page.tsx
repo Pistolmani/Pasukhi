@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Bot, Building2, Clock, Download, GitBranch, MessageCircle, Plus, SlidersHorizontal } from 'lucide-react'
+import { SetupChecklist } from './setup-checklist'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { analyticsApi } from '../../api/analytics'
@@ -45,6 +46,7 @@ function OperatorDashboard() {
 
   return (
     <div className="space-y-5">
+      <SetupChecklist />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
