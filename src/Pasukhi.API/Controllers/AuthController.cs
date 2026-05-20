@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Pasukhi.Application.DTOs.Auth;
 using Pasukhi.Application.Interfaces;
 using Pasukhi.Infrastructure.Services;
+using System.ComponentModel.DataAnnotations;
 
 namespace Pasukhi.API.Controllers;
 
@@ -23,6 +24,14 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         var result = await _auth.LoginAsync(request);
+        SetRefreshTokenCookie(result.RawRefreshToken);
+        return Ok(new { accessToken = result.AccessToken, user = result.User });
+    }
+
+    [HttpPost("google")]
+    public async Task<IActionResult> Google([FromBody] GoogleAuthRequest request)
+    {
+        var result = await _auth.GoogleLoginAsync(request.IdToken);
         SetRefreshTokenCookie(result.RawRefreshToken);
         return Ok(new { accessToken = result.AccessToken, user = result.User });
     }

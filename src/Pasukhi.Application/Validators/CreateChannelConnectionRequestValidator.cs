@@ -7,6 +7,7 @@ public class CreateChannelConnectionRequestValidator : AbstractValidator<CreateC
 {
     public CreateChannelConnectionRequestValidator()
     {
+        RuleFor(x => x.ChannelType).IsInEnum();
         RuleFor(x => x.ExternalAccountId).NotEmpty().MaximumLength(200);
         RuleFor(x => x.ExternalAccountName).MaximumLength(200);
         RuleFor(x => x.AccessToken).NotEmpty().MaximumLength(2000);

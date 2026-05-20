@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Google.Apis.Auth;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -33,6 +34,32 @@ public class AuthService : IAuthService
         {
             throw new UnauthorizedAccessException("Invalid email or password.");
         }
+
+        var roles = await _userManager.GetRolesAsync(user);
+        var accessToken = GenerateAccessToken(user, roles);
+        var rawRefreshToken = await CreateRefreshTokenAsync(user.Id);
+        await _db.SaveChangesAsync();
+
+        return new AuthResponse(accessToken, rawRefreshToken, await ToDtoAsync(user, roles));
+    }
+
+    public async Task<AuthResponse> GoogleLoginAsync(string idToken)
+    {
+        GoogleJsonWebSignature.Payload payload;
+        try
+        {
+            payload = await GoogleJsonWebSignature.ValidateAsync(idToken, new GoogleJsonWebSignature.ValidationSettings
+            {
+                Audience = new[] { _config["Google:ClientId"] }
+            });
+        }
+        catch (InvalidJwtException)
+        {
+            throw new UnauthorizedAccessException("Invalid Google token.");
+        }
+
+        var user = await _userManager.FindByEmailAsync(payload.Email)
+            ?? throw new UnauthorizedAccessException("No account found for this Google address. Contact your administrator.");
 
         var roles = await _userManager.GetRolesAsync(user);
         var accessToken = GenerateAccessToken(user, roles);
