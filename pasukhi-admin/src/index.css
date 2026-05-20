@@ -58,74 +58,98 @@ body {
 }
 
 :root {
-  --background: #fafaf9;
-  --foreground: #0f172a;
-  --card: oklch(1 0 0);
+  /* Core Brand & Canvas (Sleek Slate-Zinc) */
+  --background: #f8fafc;            /* Slate-50 (Crisp, clean, cool-gray canvas) */
+  --foreground: #0f172a;            /* Slate-900 (Rich charcoal-blue) */
+
+  --card: #ffffff;
   --card-foreground: #0f172a;
-  --popover: oklch(1 0 0);
+  --popover: #ffffff;
   --popover-foreground: #0f172a;
-  --primary: #4f46e5;
+
+  /* Primary Brand (Electric Royal Indigo) */
+  --primary: #4f46e5;               /* Indigo-600 */
   --primary-foreground: #ffffff;
-  --secondary: #f7f6f3;
-  --secondary-foreground: #0f172a;
-  --muted: #f7f6f3;
-  --muted-foreground: #64748b;
-  --accent: #fef3c7;
-  --accent-foreground: #92400e;
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: #e7e5e0;
-  --input: #e7e5e0;
-  --ring: #4f46e5;
+
+  /* UI Elements (Pure Crisp Grays) */
+  --secondary: #f1f5f9;             /* Slate-100 */
+  --secondary-foreground: #334155;  /* Slate-700 */
+  --muted: #f1f5f9;                 /* Slate-100 */
+  --muted-foreground: #64748b;      /* Slate-500 */
+
+  /* Sophisticated Status Colors */
+  --accent: #fef3c7;                /* Warm Amber-100 */
+  --accent-foreground: #92400e;     /* Deep Amber-800 */
+  --destructive: #ef4444;           /* Rose-500 */
+
+  --border: #e2e8f0;                /* Slate-200 (Clean hairline borders) */
+  --input: #e2e8f0;
+  --ring: #6366f1;                  /* Indigo-500 */
+
+  /* Charts */
   --chart-1: #4f46e5;
-  --chart-2: #94a3b8;
+  --chart-2: #38bdf8;               /* Sky Blue */
   --chart-3: #f59e0b;
-  --chart-4: #059669;
-  --chart-5: #e11d48;
-  --radius: 0.625rem;
-  --sidebar: #0b1220;
-  --sidebar-foreground: #e2e8f0;
-  --sidebar-primary: #4f46e5;
+  --chart-4: #10b981;
+  --chart-5: #f43f5e;
+
+  --radius: 0.75rem;                /* Slightly softer modern rounded corners */
+
+  /* Sidebar (Sophisticated Deep Space Navy) */
+  --sidebar: #090d16;
+  --sidebar-foreground: #94a3b8;
+  --sidebar-primary: #6366f1;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: rgba(99, 102, 241, 0.16);
+  --sidebar-accent: rgba(99, 102, 241, 0.12);
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-border: rgba(255, 255, 255, 0.05);
   --sidebar-ring: #6366f1;
+
   --pa-accent: #f59e0b;
-  --pa-card-shadow: 0 1px 0 rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -16px rgba(15, 23, 42, 0.14);
+  --pa-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.03), 0 4px 12px -2px rgba(15, 23, 42, 0.05);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* Rich Midnight Sapphire Canvas */
+  --background: #090d16;            /* Deep Space Blue-Black */
+  --foreground: #f8fafc;            /* Clean light grey text */
+
+  --card: #0d1321;                  /* Elegant deep sapphire cards */
+  --card-foreground: #f8fafc;
+  --popover: #0d1321;
+  --popover-foreground: #f8fafc;
+
+  /* Brand preserves its Indigo identity */
+  --primary: #6366f1;               /* Indigo-500 (Vibrant in dark mode) */
+  --primary-foreground: #ffffff;
+
+  --secondary: #1e293b;             /* Slate-800 */
+  --secondary-foreground: #e2e8f0;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;      /* Slate-400 */
+
+  --accent: rgba(99, 102, 241, 0.15); /* Translucent Indigo Accent */
+  --accent-foreground: #a5b4fc;
+  --destructive: #f87171;
+
+  --border: rgba(255, 255, 255, 0.08); /* Frosted-glass borderline */
+  --input: rgba(255, 255, 255, 0.08);
+  --ring: #818cf8;
+
+  --chart-1: #6366f1;
+  --chart-2: #38bdf8;
+  --chart-3: #fbbf24;
+  --chart-4: #34d399;
+  --chart-5: #fb7185;
+
+  --sidebar: #060a12;               /* Slightly darker sidebar for layered depth */
+  --sidebar-foreground: #94a3b8;
+  --sidebar-primary: #6366f1;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(255, 255, 255, 0.06);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.04);
+  --sidebar-ring: #6366f1;
 }
 
 @layer base {
@@ -145,7 +169,7 @@ body {
     background:
       radial-gradient(1200px 600px at 50% -10%, rgba(79, 70, 229, 0.18), transparent 60%),
       radial-gradient(800px 500px at 100% 100%, rgba(245, 158, 11, 0.1), transparent 60%),
-      linear-gradient(180deg, #fafaf9 0%, #f2f1ec 100%);
+      linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
   }
 
   .card-shadow {
@@ -167,5 +191,35 @@ body {
     background-clip: content-box;
     border: 2px solid transparent;
     border-radius: 999px;
+  }
+
+  /* Elegant glassmorphism overlays */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* Vibrant active glows for key status cards */
+  .glow-indigo {
+    box-shadow: 0 0 20px -5px rgba(99, 102, 241, 0.25);
+  }
+  .glow-emerald {
+    box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.25);
+  }
+  .glow-rose {
+    box-shadow: 0 0 20px -5px rgba(244, 63, 94, 0.25);
+  }
+  .glow-amber {
+    box-shadow: 0 0 20px -5px rgba(245, 158, 11, 0.25);
+  }
+
+  /* Premium border transitions */
+  .border-glow-hover {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .border-glow-hover:hover {
+    border-color: var(--primary);
+    box-shadow: 0 0 15px -3px rgba(99, 102, 241, 0.15);
   }
 }
