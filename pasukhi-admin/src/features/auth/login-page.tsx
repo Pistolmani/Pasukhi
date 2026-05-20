@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+import { GoogleLogin } from '@react-oauth/google'
 import { Sparkles, Loader2, CheckCircle2, MessageSquare, Bot } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
@@ -30,6 +31,17 @@ export function LoginPage() {
       navigate('/')
     } catch {
       toast.error('Invalid email or password')
+    }
+  }
+
+  const onGoogleSuccess = async (credentialResponse: { credential?: string }) => {
+    if (!credentialResponse.credential) return
+    try {
+      const result = await authApi.googleLogin(credentialResponse.credential)
+      setAuth(result.user, result.accessToken)
+      navigate('/')
+    } catch {
+      toast.error('Google sign-in failed. Make sure your account has been added by an admin.')
     }
   }
 
@@ -123,16 +135,30 @@ export function LoginPage() {
               <div className="h-px flex-1 bg-slate-200/60" />
             </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              className="group h-11 w-full gap-2.5 rounded-xl border border-slate-200/80 bg-white text-[13.5px] font-medium text-slate-700 shadow-sm transition-all duration-300 hover:bg-slate-50/50 hover:border-slate-300 hover:shadow-md active:scale-[0.99]"
-            >
-              <span className="relative flex size-4 items-center justify-center overflow-hidden rounded-sm bg-gradient-to-br from-purple-600 via-pink-500 to-amber-400">
-                <span className="absolute inset-0 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100" />
-              </span>
-              Continue with Meta Business
-            </Button>
+            <div className="flex flex-col gap-3">
+              <div className="flex justify-center [&>iframe]:!w-full [&>div]:!w-full [&_iframe]:!w-full">
+                <GoogleLogin
+                  onSuccess={onGoogleSuccess}
+                  onError={() => toast.error('Google sign-in failed.')}
+                  width="380"
+                  shape="rectangular"
+                  size="large"
+                  text="continue_with"
+                  logo_alignment="left"
+                />
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="group h-11 w-full gap-2.5 rounded-xl border border-slate-200/80 bg-white text-[13.5px] font-medium text-slate-700 shadow-sm transition-all duration-300 hover:bg-slate-50/50 hover:border-slate-300 hover:shadow-md active:scale-[0.99]"
+              >
+                <span className="relative flex size-4 items-center justify-center overflow-hidden rounded-sm bg-gradient-to-br from-purple-600 via-pink-500 to-amber-400">
+                  <span className="absolute inset-0 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100" />
+                </span>
+                Continue with Meta Business
+              </Button>
+            </div>
           </form>
 
           <div className="mt-8 text-[12.5px] text-slate-500">

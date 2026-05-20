@@ -23,6 +23,8 @@ export interface AuthResponse {
 export const authApi = {
   login: (data: LoginRequest) =>
     api.post<AuthResponse>('/api/auth/login', data).then((response) => response.data),
+  googleLogin: (idToken: string) =>
+    api.post<AuthResponse>('/api/auth/google', { idToken }).then((response) => response.data),
   logout: () => api.post('/api/auth/logout'),
   me: () => api.get<User>('/api/auth/me').then((response) => response.data),
 }
