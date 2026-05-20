@@ -1,9 +1,12 @@
+using System.Net;
 using System.Text;
 using System.Threading.Channels;
+using System.Threading.RateLimiting;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Pasukhi.API.Middleware;
@@ -38,11 +41,17 @@ builder.Services.AddIdentity<AdminUser, IdentityRole>(options =>
     options.Password.RequireUppercase = true;
     options.Password.RequiredLength = 8;
     options.User.RequireUniqueEmail = true;
+    options.Lockout.AllowedForNewUsers = true;
+    options.Lockout.MaxFailedAccessAttempts = 5;
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
 })
 .AddEntityFrameworkStores<PasukhiDbContext>()
 .AddDefaultTokenProviders();
 
-var jwtSecret = builder.Configuration["Jwt:Secret"]!;
+var jwtSecret = builder.Configuration["Jwt:Secret"];
+if (string.IsNullOrWhiteSpace(jwtSecret) || jwtSecret.Length < 32)
+    throw new InvalidOperationException("Jwt:Secret must be at least 32 characters. Set it via the Jwt__Secret environment variable.");
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -58,7 +67,7 @@ builder.Services.AddAuthentication(options =>
         ValidateIssuerSigningKey = true,
         ValidIssuer = builder.Configuration["Jwt:Issuer"],
         ValidAudience = builder.Configuration["Jwt:Audience"],
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret!)),
         ClockSkew = TimeSpan.Zero
     };
 });
@@ -94,6 +103,8 @@ builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.Configure<BotReadinessOptions>(builder.Configuration.GetSection("BotReadiness"));
 builder.Services.AddScoped<IBotReadinessService, BotReadinessService>();
+builder.Services.AddHttpClient<IMetaOAuthService, MetaOAuthService>();
+builder.Services.AddHttpClient<IGoogleOAuthService, GoogleOAuthService>();
 builder.Services.AddScoped<IWebhookSignatureVerifier, WebhookSignatureVerifier>();
 builder.Services.AddScoped<IWebhookResolver, WebhookResolver>();
 builder.Services.AddScoped<IMetaWebhookParser, MetaWebhookParser>();
@@ -138,6 +149,37 @@ builder.Services.AddScoped<OutboundMessageConsumer>();
 builder.Services.AddHostedService<InboundMessageBackgroundService>();
 builder.Services.AddHostedService<OutboundMessageBackgroundService>();
 
+builder.Services.AddHostedService<RefreshTokenCleanupService>();
+
+builder.Services.AddRateLimiter(options =>
+{
+    // Per-IP: 10 auth requests per minute (login, refresh, OAuth callbacks)
+    options.AddPolicy("auth", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromMinutes(1),
+                PermitLimit = 10,
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+
+    // Per-IP: 50 webhook requests per 10 seconds — Meta can send bursts
+    options.AddPolicy("webhook", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromSeconds(10),
+                PermitLimit = 50,
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+
+    options.RejectionStatusCode = (int)HttpStatusCode.TooManyRequests;
+});
+
 builder.Services.AddControllers();
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<LoginRequestValidator>();
@@ -160,7 +202,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseSerilogRequestLogging();
+app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseRateLimiter();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();

@@ -88,6 +88,11 @@ public class PasukhiDbContext : IdentityDbContext<AdminUser>
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.Entity<AdminUser>()
+            .HasIndex(u => new { u.ExternalProvider, u.ExternalProviderId })
+            .IsUnique()
+            .HasFilter("\"ExternalProvider\" IS NOT NULL AND \"ExternalProviderId\" IS NOT NULL");
+
+        builder.Entity<AdminUser>()
             .HasOne(u => u.Business)
             .WithMany()
             .HasForeignKey(u => u.BusinessId)

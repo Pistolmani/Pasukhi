@@ -30,9 +30,62 @@ public class AuthService : IAuthService
     public async Task<AuthResponse> LoginAsync(LoginRequest request)
     {
         var user = await _userManager.FindByEmailAsync(request.Email);
-        if (user == null || !await _userManager.CheckPasswordAsync(user, request.Password))
-        {
+
+        if (user == null)
             throw new UnauthorizedAccessException("Invalid email or password.");
+
+        if (await _userManager.IsLockedOutAsync(user))
+            throw new UnauthorizedAccessException("Account is temporarily locked. Try again later.");
+
+        if (!await _userManager.CheckPasswordAsync(user, request.Password))
+        {
+            await _userManager.AccessFailedAsync(user);
+            throw new UnauthorizedAccessException("Invalid email or password.");
+        }
+
+        await _userManager.ResetAccessFailedCountAsync(user);
+
+        var roles = await _userManager.GetRolesAsync(user);
+        var accessToken = GenerateAccessToken(user, roles);
+        var rawRefreshToken = await CreateRefreshTokenAsync(user.Id);
+        await _db.SaveChangesAsync();
+
+        return new AuthResponse(accessToken, rawRefreshToken, await ToDtoAsync(user, roles));
+    }
+
+    public async Task<AuthResponse> ExternalLoginAsync(string provider, string providerId, string email, string firstName, string lastName)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u =>
+            u.ExternalProvider == provider && u.ExternalProviderId == providerId);
+
+        if (user == null && !string.IsNullOrEmpty(email))
+        {
+            user = await _userManager.FindByEmailAsync(email);
+            if (user != null)
+            {
+                user.ExternalProvider = provider;
+                user.ExternalProviderId = providerId;
+                await _userManager.UpdateAsync(user);
+            }
+        }
+
+        if (user == null)
+        {
+            user = new AdminUser
+            {
+                UserName = email,
+                Email = email,
+                FirstName = firstName,
+                LastName = lastName,
+                ExternalProvider = provider,
+                ExternalProviderId = providerId,
+                CreatedAt = DateTime.UtcNow,
+            };
+            var result = await _userManager.CreateAsync(user);
+            if (!result.Succeeded)
+                throw new InvalidOperationException($"Failed to create user: {string.Join(", ", result.Errors.Select(e => e.Description))}");
+
+            await _userManager.AddToRoleAsync(user, "Operator");
         }
 
         var roles = await _userManager.GetRolesAsync(user);
@@ -159,6 +212,49 @@ public class AuthService : IAuthService
         });
 
         return Task.FromResult(rawToken);
+    }
+
+    public async Task<AuthResponse> SetupBusinessAsync(string userId, string name, string? description)
+    {
+        var user = await _userManager.FindByIdAsync(userId)
+            ?? throw new KeyNotFoundException("User not found.");
+
+        if (user.BusinessId.HasValue)
+            throw new InvalidOperationException("User already has a business.");
+
+        var slug = GenerateSlug(name);
+        if (await _db.Businesses.AnyAsync(b => b.Slug == slug))
+            slug = $"{slug}-{Guid.NewGuid().ToString()[..6]}";
+
+        var business = new Business
+        {
+            Id = Guid.NewGuid(),
+            Name = name,
+            Slug = slug,
+            Description = description,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        _db.Businesses.Add(business);
+
+        user.BusinessId = business.Id;
+        await _userManager.UpdateAsync(user);
+        await _db.SaveChangesAsync();
+
+        var roles = await _userManager.GetRolesAsync(user);
+        var accessToken = GenerateAccessToken(user, roles);
+        var rawRefreshToken = await CreateRefreshTokenAsync(user.Id);
+        await _db.SaveChangesAsync();
+
+        return new AuthResponse(accessToken, rawRefreshToken, await ToDtoAsync(user, roles));
+    }
+
+    private static string GenerateSlug(string name)
+    {
+        var slug = name.ToLowerInvariant().Replace(" ", "-");
+        slug = System.Text.RegularExpressions.Regex.Replace(slug, @"[^a-z0-9-]", "");
+        slug = System.Text.RegularExpressions.Regex.Replace(slug, @"-+", "-");
+        return slug.Trim('-');
     }
 
     public static string HashRefreshToken(string rawToken) =>

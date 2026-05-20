@@ -5,8 +5,9 @@ namespace Pasukhi.Application.Interfaces;
 public interface IAuthService
 {
     Task<AuthResponse> LoginAsync(LoginRequest request);
-    Task<AuthResponse> GoogleLoginAsync(string idToken);
+    Task<AuthResponse> ExternalLoginAsync(string provider, string providerId, string email, string firstName, string lastName);
     Task<AuthResponse> RefreshTokenAsync(string refreshToken);
     Task LogoutAsync(string userId);
     Task<AdminUserDto> GetCurrentUserAsync(string userId);
+    Task<AuthResponse> SetupBusinessAsync(string userId, string name, string? description);
 }

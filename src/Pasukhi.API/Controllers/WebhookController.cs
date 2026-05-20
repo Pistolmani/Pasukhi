@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Pasukhi.Application.Interfaces;
 using Pasukhi.Application.Messaging;
@@ -13,6 +14,7 @@ namespace Pasukhi.API.Controllers;
 
 [ApiController]
 [Route("api/webhooks")]
+[EnableRateLimiting("webhook")]
 public class WebhookController : ControllerBase
 {
     private readonly IWebhookSignatureVerifier _verifier;
