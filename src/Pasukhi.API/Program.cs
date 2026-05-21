@@ -112,6 +112,7 @@ builder.Services.AddScoped<IMetaWebhookParser, MetaWebhookParser>();
 builder.Services.AddHttpClient<IInstagramChannelProvider, InstagramChannelProvider>();
 builder.Services.AddHttpClient<IMessengerChannelProvider, MessengerChannelProvider>();
 builder.Services.AddHttpClient<IWhatsAppChannelProvider, WhatsAppChannelProvider>();
+builder.Services.AddHttpClient<IMessengerProfileService, MessengerProfileService>();
 builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
 
 // AI provider selection based on configuration
