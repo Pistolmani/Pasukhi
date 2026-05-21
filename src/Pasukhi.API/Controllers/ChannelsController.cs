@@ -11,10 +11,12 @@ namespace Pasukhi.API.Controllers;
 public class ChannelsController : ControllerBase
 {
     private readonly IChannelService _channels;
+    private readonly IMessengerProfileService _messengerProfile;
 
-    public ChannelsController(IChannelService channels)
+    public ChannelsController(IChannelService channels, IMessengerProfileService messengerProfile)
     {
         _channels = channels;
+        _messengerProfile = messengerProfile;
     }
 
     [HttpGet]
@@ -52,5 +54,21 @@ public class ChannelsController : ControllerBase
     {
         await _channels.DeleteAsync(id, cancellationToken);
         return NoContent();
+    }
+
+    [HttpPost("messenger-profile/sync")]
+    public async Task<IActionResult> SyncMessengerProfile(
+        [FromBody] SyncMessengerProfileRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _messengerProfile.SyncAsync(request, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpGet("messenger-profile/greeting")]
+    public async Task<IActionResult> GetMessengerGreeting(CancellationToken cancellationToken)
+    {
+        var text = await _messengerProfile.GetStoredGreetingTextAsync(cancellationToken);
+        return Ok(new { greetingText = text });
     }
 }

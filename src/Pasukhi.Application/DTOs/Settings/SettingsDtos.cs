@@ -7,6 +7,7 @@ public static class SettingKeys
     public const string WorkingHoursStart = "working_hours_start";
     public const string WorkingHoursEnd = "working_hours_end";
     public const string Timezone = "timezone";
+    public const string MessengerGreetingText = "messenger_greeting_text";
 }
 
 public record BusinessSettingsDto(

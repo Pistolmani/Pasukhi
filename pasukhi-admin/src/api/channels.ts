@@ -1,5 +1,10 @@
 import api from './client'
-import type { ChannelConnection, SaveChannelConnectionRequest } from '../types/channel'
+import type {
+  ChannelConnection,
+  SaveChannelConnectionRequest,
+  SyncMessengerProfileRequest,
+  SyncMessengerProfileResult,
+} from '../types/channel'
 
 export const channelsApi = {
   list: () =>
@@ -11,4 +16,8 @@ export const channelsApi = {
   update: (id: string, data: SaveChannelConnectionRequest) =>
     api.put<ChannelConnection>(`/api/channels/${id}`, data).then((response) => response.data),
   remove: (id: string) => api.delete(`/api/channels/${id}`),
+  syncMessengerProfile: (data: SyncMessengerProfileRequest) =>
+    api.post<SyncMessengerProfileResult>('/api/channels/messenger-profile/sync', data).then((response) => response.data),
+  getMessengerGreeting: () =>
+    api.get<{ greetingText: string | null }>('/api/channels/messenger-profile/greeting').then((response) => response.data),
 }

@@ -3,6 +3,11 @@ import { channelTypes, type ChannelType } from '../types/channel'
 
 const validChannelTypes = new Set<ChannelType>(channelTypes)
 
+export const messengerProfileSchema = z.object({
+  greetingText: z.string().trim().max(160).nullable(),
+  maxIceBreakers: z.number().int().min(1).max(4),
+})
+
 export const channelSchema = z.object({
   channelType: z.number().refine((value): value is ChannelType => validChannelTypes.has(value as ChannelType), {
     message: 'Select a valid channel.',
