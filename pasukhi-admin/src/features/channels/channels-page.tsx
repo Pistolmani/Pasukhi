@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { channelsApi } from '../../api/channels'
+import { MessengerProfilePanel } from './messenger-profile-panel'
 import { Button } from '../../components/ui/button'
 import { Checkbox } from '../../components/ui/checkbox'
 import {
@@ -267,6 +268,8 @@ export function ChannelsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {channelsQuery.data && <MessengerProfilePanel channels={channelsQuery.data} />}
     </div>
   )
 }

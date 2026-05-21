@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { channelsApi } from '../../api/channels'
 import { faqsApi } from '../../api/faqs'
+import { Button } from '../../components/ui/button'
 import { Label } from '../../components/ui/label'
 import { Textarea } from '../../components/ui/textarea'
+import { messengerProfileSchema } from '../../schemas/channel-schemas'
+import { firstIssue } from '../../lib/form-utils'
 import { ChannelType, type ChannelConnection } from '../../types/channel'
 
 interface Props {
@@ -38,6 +42,26 @@ export function MessengerProfilePanel({ channels }: Props) {
   const topFaqs = (faqsQuery.data ?? [])
     .filter((f) => f.isActive)
     .slice(0, 4)
+
+  const syncMutation = useMutation({
+    mutationFn: channelsApi.syncMessengerProfile,
+    onSuccess: (result) => {
+      toast.success(`Synced to Facebook — ${result.iceBreakersCount} ice breaker(s) set.`)
+    },
+    onError: () => toast.error('Sync failed. Check your Messenger access token and page permissions.'),
+  })
+
+  const handleSync = () => {
+    const parsed = messengerProfileSchema.safeParse({
+      greetingText: greetingText.trim() || null,
+      maxIceBreakers: 4,
+    })
+    if (!parsed.success) {
+      toast.error(firstIssue(parsed.error))
+      return
+    }
+    syncMutation.mutate(parsed.data)
+  }
 
   if (!hasMessenger) return null
 
@@ -86,6 +110,16 @@ export function MessengerProfilePanel({ channels }: Props) {
             ))}
           </ul>
         )}
+      </div>
+
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          disabled={syncMutation.isPending}
+          onClick={handleSync}
+        >
+          {syncMutation.isPending ? 'Syncing…' : 'Sync to Facebook'}
+        </Button>
       </div>
     </section>
   )
