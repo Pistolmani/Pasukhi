@@ -37,8 +37,55 @@ public class MessengerProfileService : IMessengerProfileService
         _logger = logger;
     }
 
-    public Task<SyncMessengerProfileResult> SyncAsync(SyncMessengerProfileRequest request, CancellationToken ct = default)
-        => throw new NotImplementedException();
+    public async Task<SyncMessengerProfileResult> SyncAsync(SyncMessengerProfileRequest request, CancellationToken ct = default)
+    {
+        var businessId = EnsureTenant();
+
+        var channel = await _db.ChannelConnections
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.ChannelType == ChannelType.Messenger && c.IsActive, ct)
+            ?? throw new InvalidOperationException("No active Messenger channel connection found.");
+
+        var faqs = await _db.FaqItems
+            .AsNoTracking()
+            .Where(f => f.IsActive)
+            .OrderBy(f => f.SortOrder)
+            .ThenBy(f => f.CreatedAt)
+            .Take(request.MaxIceBreakers)
+            .Select(f => new { f.Id, f.Question })
+            .ToListAsync(ct);
+
+        var callToActions = faqs.Select((f, i) => (object)new
+        {
+            type = "postback",
+            title = f.Question.Length > 80 ? f.Question[..80] : f.Question,
+            payload = $"FAQ_{i}"
+        }).ToList();
+
+        var payload = BuildPayload(callToActions, request.GreetingText);
+
+        var url = $"{_graphBaseUrl}/{_graphApiVersion}/{channel.ExternalAccountId}/messenger_profile";
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = JsonContent.Create(payload)
+        };
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", channel.AccessToken);
+
+        using var response = await _httpClient.SendAsync(httpRequest, ct);
+        var responseBody = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Messenger Profile API error {Status}: {Body}", (int)response.StatusCode, responseBody);
+            throw new InvalidOperationException($"Meta API error: {ExtractMetaError(responseBody)}");
+        }
+
+        var greetingSet = !string.IsNullOrWhiteSpace(request.GreetingText);
+        if (greetingSet)
+            await PersistGreetingTextAsync(businessId, request.GreetingText!, ct);
+
+        return new SyncMessengerProfileResult(true, faqs.Count, greetingSet);
+    }
 
     public async Task<string?> GetStoredGreetingTextAsync(CancellationToken ct = default)
     {
