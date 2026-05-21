@@ -40,3 +40,14 @@ export interface SaveChannelConnectionRequest {
   verifyToken?: string | null
   isActive: boolean
 }
+
+export interface SyncMessengerProfileRequest {
+  greetingText: string | null
+  maxIceBreakers: number
+}
+
+export interface SyncMessengerProfileResult {
+  success: boolean
+  iceBreakersCount: number
+  greetingSet: boolean
+}
