@@ -18,4 +18,6 @@ export const channelsApi = {
   remove: (id: string) => api.delete(`/api/channels/${id}`),
   syncMessengerProfile: (data: SyncMessengerProfileRequest) =>
     api.post<SyncMessengerProfileResult>('/api/channels/messenger-profile/sync', data).then((response) => response.data),
+  getMessengerGreeting: () =>
+    api.get<{ greetingText: string | null }>('/api/channels/messenger-profile/greeting').then((response) => response.data),
 }
