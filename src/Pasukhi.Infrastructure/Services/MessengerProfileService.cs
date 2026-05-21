@@ -40,8 +40,14 @@ public class MessengerProfileService : IMessengerProfileService
     public Task<SyncMessengerProfileResult> SyncAsync(SyncMessengerProfileRequest request, CancellationToken ct = default)
         => throw new NotImplementedException();
 
-    public Task<string?> GetStoredGreetingTextAsync(CancellationToken ct = default)
-        => throw new NotImplementedException();
+    public async Task<string?> GetStoredGreetingTextAsync(CancellationToken ct = default)
+    {
+        EnsureTenant();
+        var setting = await _db.BusinessSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Key == SettingKeys.MessengerGreetingText, ct);
+        return setting?.Value;
+    }
 
     private Guid EnsureTenant()
     {
