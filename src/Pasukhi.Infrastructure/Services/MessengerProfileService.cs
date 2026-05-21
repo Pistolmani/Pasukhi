@@ -49,6 +49,48 @@ public class MessengerProfileService : IMessengerProfileService
         return setting?.Value;
     }
 
+    private static object BuildPayload(IList<object> callToActions, string? greetingText)
+    {
+        if (string.IsNullOrWhiteSpace(greetingText))
+        {
+            return new
+            {
+                get_started = new { payload = "GET_STARTED" },
+                ice_breakers = new[] { new { call_to_actions = callToActions } }
+            };
+        }
+
+        return new
+        {
+            get_started = new { payload = "GET_STARTED" },
+            ice_breakers = new[] { new { call_to_actions = callToActions } },
+            greeting = new[] { new { locale = "default", text = greetingText } }
+        };
+    }
+
+    private async Task PersistGreetingTextAsync(Guid businessId, string greetingText, CancellationToken ct)
+    {
+        var existing = await _db.BusinessSettings
+            .FirstOrDefaultAsync(s => s.Key == SettingKeys.MessengerGreetingText, ct);
+
+        if (existing is not null)
+        {
+            existing.Value = greetingText;
+        }
+        else
+        {
+            _db.BusinessSettings.Add(new BusinessSetting
+            {
+                Id = Guid.NewGuid(),
+                BusinessId = businessId,
+                Key = SettingKeys.MessengerGreetingText,
+                Value = greetingText
+            });
+        }
+
+        await _db.SaveChangesAsync(ct);
+    }
+
     private Guid EnsureTenant()
     {
         if (_tenantProvider.BusinessId == Guid.Empty)
