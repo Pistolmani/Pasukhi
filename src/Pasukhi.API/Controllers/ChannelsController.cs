@@ -11,10 +11,12 @@ namespace Pasukhi.API.Controllers;
 public class ChannelsController : ControllerBase
 {
     private readonly IChannelService _channels;
+    private readonly IMessengerProfileService _messengerProfile;
 
-    public ChannelsController(IChannelService channels)
+    public ChannelsController(IChannelService channels, IMessengerProfileService messengerProfile)
     {
         _channels = channels;
+        _messengerProfile = messengerProfile;
     }
 
     [HttpGet]
