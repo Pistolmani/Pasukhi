@@ -55,4 +55,13 @@ public class ChannelsController : ControllerBase
         await _channels.DeleteAsync(id, cancellationToken);
         return NoContent();
     }
+
+    [HttpPost("messenger-profile/sync")]
+    public async Task<IActionResult> SyncMessengerProfile(
+        [FromBody] SyncMessengerProfileRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _messengerProfile.SyncAsync(request, cancellationToken);
+        return Ok(result);
+    }
 }
