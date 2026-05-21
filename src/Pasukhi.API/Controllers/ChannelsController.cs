@@ -64,4 +64,11 @@ public class ChannelsController : ControllerBase
         var result = await _messengerProfile.SyncAsync(request, cancellationToken);
         return Ok(result);
     }
+
+    [HttpGet("messenger-profile/greeting")]
+    public async Task<IActionResult> GetMessengerGreeting(CancellationToken cancellationToken)
+    {
+        var text = await _messengerProfile.GetStoredGreetingTextAsync(cancellationToken);
+        return Ok(new { greetingText = text });
+    }
 }
