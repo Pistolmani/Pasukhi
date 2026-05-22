@@ -54,6 +54,13 @@ api.interceptors.response.use(
       }
     }
 
+    // Detect plan limit errors (HTTP 402) and surface the upgrade modal.
+    if (error.response?.status === 402 && error.response.data?.error === 'plan_limit_exceeded') {
+      import('../stores/upgrade-prompt-store').then(({ useUpgradePromptStore }) => {
+        useUpgradePromptStore.getState().open(error.response!.data)
+      })
+    }
+
     return Promise.reject(error)
   },
 )
