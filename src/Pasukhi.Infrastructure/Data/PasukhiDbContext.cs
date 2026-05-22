@@ -47,6 +47,10 @@ public class PasukhiDbContext : IdentityDbContext<AdminUser>
         builder.Entity<BotKnowledgeSuggestion>().HasQueryFilter(e => e.BusinessId == _tenantProvider.BusinessId);
 
         builder.Entity<Business>().HasIndex(b => b.Slug).IsUnique();
+        builder.Entity<Business>()
+            .HasIndex(b => b.StripeCustomerId)
+            .IsUnique()
+            .HasFilter("\"StripeCustomerId\" IS NOT NULL");
         builder.Entity<ChannelConnection>()
             .HasIndex(c => new { c.ExternalAccountId, c.ChannelType })
             .IsUnique();

@@ -1,3 +1,5 @@
+using Pasukhi.Domain.Enums;
+
 namespace Pasukhi.Domain.Entities;
 
 public class Business
@@ -10,5 +12,13 @@ public class Business
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+
+    // Subscription
+    public SubscriptionTier Tier { get; set; } = SubscriptionTier.Free;
+    public SubscriptionStatus SubscriptionStatus { get; set; } = SubscriptionStatus.Active;
+    public string? StripeCustomerId { get; set; }
+    public string? StripeSubscriptionId { get; set; }
+    public DateTime? CurrentPeriodEnd { get; set; }
+
     public ICollection<ChannelConnection> ChannelConnections { get; set; } = new List<ChannelConnection>();
 }
