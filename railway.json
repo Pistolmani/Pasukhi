@@ -9,6 +9,7 @@
     "numReplicas": 1,
     "sleepApplication": false,
     "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10
+    "restartPolicyMaxRetries": 10,
+    "releaseCommand": "dotnet ef database update --project src/Pasukhi.Infrastructure --startup-project src/Pasukhi.API"
   }
 }

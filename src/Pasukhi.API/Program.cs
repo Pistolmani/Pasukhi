@@ -101,6 +101,8 @@ builder.Services.AddScoped<IBusinessPromptService, BusinessPromptService>();
 builder.Services.AddScoped<IEscalationService, EscalationService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
+builder.Services.AddScoped<IPlanLimitsService, PlanLimitsService>();
+builder.Services.AddScoped<IBillingService, StripeBillingService>();
 builder.Services.Configure<BotReadinessOptions>(builder.Configuration.GetSection("BotReadiness"));
 builder.Services.AddScoped<IBotReadinessService, BotReadinessService>();
 builder.Services.AddHttpClient<IMetaOAuthService, MetaOAuthService>();
@@ -126,16 +128,19 @@ else
     builder.Services.AddHttpClient<IAiService, OpenAiService>();
 }
 
-// In-process message channels (replaces RabbitMQ/MassTransit)
+// In-process message channels (replaces RabbitMQ/MassTransit).
+// DropOldest prevents the webhook handler from blocking when the consumer is slow
+// (e.g. Gemini latency spikes). Meta retries dropped events; the idempotency
+// guard on ExternalMessageId prevents duplicate processing on retry.
 var inboundChannel = Channel.CreateBounded<InboundMessageEvent>(new BoundedChannelOptions(512)
 {
-    FullMode = BoundedChannelFullMode.Wait,
+    FullMode = BoundedChannelFullMode.DropOldest,
     SingleReader = true,
     SingleWriter = false
 });
 var outboundChannel = Channel.CreateBounded<OutboundMessageReadyEvent>(new BoundedChannelOptions(512)
 {
-    FullMode = BoundedChannelFullMode.Wait,
+    FullMode = BoundedChannelFullMode.DropOldest,
     SingleReader = true,
     SingleWriter = false
 });
@@ -189,10 +194,13 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+// Migrations are intentionally NOT run at startup. Running MigrateAsync() here
+// races when multiple replicas start simultaneously and can corrupt the migration
+// history table. Run migrations via the Railway release command instead:
+//   dotnet ef database update --project src/Pasukhi.Infrastructure --startup-project src/Pasukhi.API
+// See railway.json (releaseCommand) and docs/codex/phase-11.md.
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
-    await db.Database.MigrateAsync();
     await DbSeeder.SeedAsync(scope.ServiceProvider);
 }
 
