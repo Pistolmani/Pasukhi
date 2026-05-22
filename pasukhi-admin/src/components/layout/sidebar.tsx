@@ -4,6 +4,7 @@ import {
   Bot,
   Building2,
   ClipboardCheck,
+  CreditCard,
   GitBranch,
   HelpCircle,
   LayoutDashboard,
@@ -104,6 +105,7 @@ export function Sidebar() {
         { to: '/channels', label: 'Channels', icon: GitBranch },
         { to: '/webhooks', label: 'Webhooks', icon: Webhook },
         { to: '/settings', label: 'Settings', icon: Settings2 },
+        { to: '/billing', label: 'Billing', icon: CreditCard },
       ],
     },
   ]

@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react'
+import { UpgradePromptModal } from './features/billing/upgrade-prompt-modal'
 import type { ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './components/layout/app-layout'
@@ -95,10 +96,16 @@ const WebhooksPage = lazy(() =>
     default: module.WebhooksPage,
   })),
 )
+const BillingPage = lazy(() =>
+  import('./features/billing/billing-page').then((module) => ({
+    default: module.BillingPage,
+  })),
+)
 
 function App() {
   return (
     <Suspense fallback={null}>
+      <UpgradePromptModal />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -201,6 +208,14 @@ function App() {
               element={
                 <BusinessRoute>
                   <WebhooksPage />
+                </BusinessRoute>
+              }
+            />
+            <Route
+              path="billing"
+              element={
+                <BusinessRoute>
+                  <BillingPage />
                 </BusinessRoute>
               }
             />
