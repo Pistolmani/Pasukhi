@@ -11,11 +11,13 @@ public class RuleService : IRuleService
 {
     private readonly PasukhiDbContext _db;
     private readonly ITenantProvider _tenantProvider;
+    private readonly IPlanLimitsService _planLimits;
 
-    public RuleService(PasukhiDbContext db, ITenantProvider tenantProvider)
+    public RuleService(PasukhiDbContext db, ITenantProvider tenantProvider, IPlanLimitsService planLimits)
     {
         _db = db;
         _tenantProvider = tenantProvider;
+        _planLimits = planLimits;
     }
 
     public async Task<List<AutomationRuleDto>> GetAllAsync(CancellationToken cancellationToken = default) =>
@@ -36,6 +38,7 @@ public class RuleService : IRuleService
         CancellationToken cancellationToken = default)
     {
         var businessId = EnsureTenant();
+        await _planLimits.EnsureCanAddRuleAsync(cancellationToken);
 
         var rule = new AutomationRule
         {

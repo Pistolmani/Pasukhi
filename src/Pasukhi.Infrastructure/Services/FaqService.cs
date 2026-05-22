@@ -11,11 +11,13 @@ public class FaqService : IFaqService
 {
     private readonly PasukhiDbContext _db;
     private readonly ITenantProvider _tenantProvider;
+    private readonly IPlanLimitsService _planLimits;
 
-    public FaqService(PasukhiDbContext db, ITenantProvider tenantProvider)
+    public FaqService(PasukhiDbContext db, ITenantProvider tenantProvider, IPlanLimitsService planLimits)
     {
         _db = db;
         _tenantProvider = tenantProvider;
+        _planLimits = planLimits;
     }
 
     public async Task<List<FaqItemDto>> GetAllAsync(CancellationToken cancellationToken = default) =>
@@ -34,6 +36,7 @@ public class FaqService : IFaqService
     public async Task<FaqItemDto> CreateAsync(CreateFaqItemRequest request, CancellationToken cancellationToken = default)
     {
         var businessId = EnsureTenant();
+        await _planLimits.EnsureCanAddFaqAsync(cancellationToken);
 
         var faq = new FaqItem
         {

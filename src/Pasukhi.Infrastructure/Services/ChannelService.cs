@@ -12,11 +12,13 @@ public class ChannelService : IChannelService
 {
     private readonly PasukhiDbContext _db;
     private readonly ITenantProvider _tenantProvider;
+    private readonly IPlanLimitsService _planLimits;
 
-    public ChannelService(PasukhiDbContext db, ITenantProvider tenantProvider)
+    public ChannelService(PasukhiDbContext db, ITenantProvider tenantProvider, IPlanLimitsService planLimits)
     {
         _db = db;
         _tenantProvider = tenantProvider;
+        _planLimits = planLimits;
     }
 
     public async Task<List<ChannelConnectionDto>> GetAllAsync(CancellationToken cancellationToken = default) =>
@@ -37,6 +39,7 @@ public class ChannelService : IChannelService
         CancellationToken cancellationToken = default)
     {
         var businessId = EnsureTenant();
+        await _planLimits.EnsureCanAddChannelAsync(cancellationToken);
         var externalAccountId = request.ExternalAccountId.Trim();
 
         var exists = await _db.ChannelConnections
