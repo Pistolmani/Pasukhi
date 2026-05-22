@@ -194,13 +194,10 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Migrations are intentionally NOT run at startup. Running MigrateAsync() here
-// races when multiple replicas start simultaneously and can corrupt the migration
-// history table. Run migrations via the Railway release command instead:
-//   dotnet ef database update --project src/Pasukhi.Infrastructure --startup-project src/Pasukhi.API
-// See railway.json (releaseCommand) and docs/codex/phase-11.md.
 using (var scope = app.Services.CreateScope())
 {
+    var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
+    await db.Database.MigrateAsync();
     await DbSeeder.SeedAsync(scope.ServiceProvider);
 }
 
