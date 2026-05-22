@@ -32,7 +32,7 @@ builder.Host.UseSerilog((ctx, lc) => lc
     .WriteTo.File("logs/pasukhi-.log", rollingInterval: RollingInterval.Day));
 
 builder.Services.AddDbContext<PasukhiDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(ResolveConnectionString(builder.Configuration.GetConnectionString("DefaultConnection"))));
 
 builder.Services.AddIdentity<AdminUser, IdentityRole>(options =>
 {
@@ -220,3 +220,19 @@ app.MapControllers();
 app.MapGet("/api/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
 
 app.Run();
+
+// Converts a postgres:// URI (what Railway injects via DATABASE_URL) to the
+// key=value format Npgsql's connection string builder expects.
+static string ResolveConnectionString(string? raw)
+{
+    if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+    if (!raw.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) &&
+        !raw.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase))
+        return raw;
+
+    var uri = new Uri(raw);
+    var userInfo = uri.UserInfo.Split(':', 2);
+    return $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};" +
+           $"Username={userInfo[0]};Password={Uri.UnescapeDataString(userInfo.Length > 1 ? userInfo[1] : string.Empty)};" +
+           $"SSL Mode=Require;Trust Server Certificate=true";
+}
