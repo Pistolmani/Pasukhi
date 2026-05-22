@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Pasukhi.Application.Exceptions;
 
 namespace Pasukhi.API.Middleware;
 
@@ -18,6 +19,23 @@ public class ExceptionHandlingMiddleware
         try
         {
             await _next(context);
+        }
+        catch (PlanLimitExceededException ex)
+        {
+            _logger.LogInformation(
+                "Plan limit exceeded: resource={Resource} tier={Tier} limit={Limit} suggested={Suggested}",
+                ex.Resource, ex.CurrentTier, ex.Limit, ex.SuggestedTier);
+            context.Response.StatusCode = 402;
+            context.Response.ContentType = "application/json";
+            var body = JsonSerializer.Serialize(new
+            {
+                error = "plan_limit_exceeded",
+                resource = ex.Resource,
+                limit = ex.Limit,
+                currentTier = ex.CurrentTier.ToString(),
+                suggestedTier = ex.SuggestedTier.ToString()
+            });
+            await context.Response.WriteAsync(body);
         }
         catch (UnauthorizedAccessException ex)
         {
