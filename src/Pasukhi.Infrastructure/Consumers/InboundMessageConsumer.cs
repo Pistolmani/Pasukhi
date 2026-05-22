@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using TimeZoneConverter;
 using Pasukhi.Application.AI;
 using Pasukhi.Application.DTOs.Settings;
 using Pasukhi.Application.Interfaces;
@@ -26,17 +27,6 @@ namespace Pasukhi.Infrastructure.Consumers;
 /// </summary>
 public class InboundMessageConsumer
 {
-    private static readonly IReadOnlyDictionary<string, string> IanaToWindowsTimeZoneIds =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["Asia/Tbilisi"] = "Georgian Standard Time",
-            ["Etc/UTC"] = "UTC",
-            ["UTC"] = "UTC",
-            ["Europe/Berlin"] = "W. Europe Standard Time",
-            ["Europe/London"] = "GMT Standard Time",
-            ["America/New_York"] = "Eastern Standard Time",
-            ["America/Los_Angeles"] = "Pacific Standard Time"
-        };
 
     private readonly PasukhiDbContext _db;
     private readonly IFaqMatcher _faqMatcher;
@@ -510,24 +500,10 @@ public class InboundMessageConsumer
         _db.Messages.Add(outboundMessage);
         conversation.LastMessageAt = DateTime.UtcNow;
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var metric = await _db.DailyMetrics.FirstOrDefaultAsync(m =>
-            m.BusinessId == inboundMessage.BusinessId &&
-            m.Date == today &&
-            m.ChannelType == channelType, ct);
-
-        if (metric is null)
-        {
-            metric = new DailyMetric
-            {
-                Id = Guid.NewGuid(),
-                BusinessId = inboundMessage.BusinessId,
-                Date = today,
-                ChannelType = channelType
-            };
-            _db.DailyMetrics.Add(metric);
-        }
-
+        // Use GetOrCreateMetricAsync so the change-tracker check prevents a second
+        // DailyMetric entity being created when one was already added earlier in
+        // this scope (e.g. by TryApplyAiAsync) but not yet saved to the database.
+        var metric = await GetOrCreateMetricAsync(inboundMessage.BusinessId, channelType, ct);
         metric.TotalOutbound += 1;
         if (source == MessageSource.FaqAutoReply)
         {
@@ -656,6 +632,24 @@ public class InboundMessageConsumer
         CancellationToken ct)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        // Check the change tracker FIRST. If a new DailyMetric for today was already
+        // added in this DbContext scope (but not yet saved), a DB query won't find it —
+        // which would create a second entity for the same (BusinessId, Date, ChannelType)
+        // unique key and cause a constraint violation on SaveChangesAsync.
+        var tracked = _db.ChangeTracker
+            .Entries<DailyMetric>()
+            .FirstOrDefault(e =>
+                e.Entity.BusinessId == businessId &&
+                e.Entity.Date == today &&
+                e.Entity.ChannelType == channelType)
+            ?.Entity;
+
+        if (tracked is not null)
+        {
+            return tracked;
+        }
+
         var metric = await _db.DailyMetrics.FirstOrDefaultAsync(m =>
             m.BusinessId == businessId &&
             m.Date == today &&
@@ -741,26 +735,10 @@ public class InboundMessageConsumer
             return TimeZoneInfo.Utc;
         }
 
-        try
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById(timezone);
-        }
-        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
-        {
-            if (IanaToWindowsTimeZoneIds.TryGetValue(timezone, out var windowsTimeZoneId))
-            {
-                try
-                {
-                    return TimeZoneInfo.FindSystemTimeZoneById(windowsTimeZoneId);
-                }
-                catch (Exception fallbackEx) when (fallbackEx is TimeZoneNotFoundException or InvalidTimeZoneException)
-                {
-                    return TimeZoneInfo.Utc;
-                }
-            }
-        }
-
-        return TimeZoneInfo.Utc;
+        // TZConvert handles IANA names (e.g. "Asia/Tbilisi"), Windows names
+        // (e.g. "Georgian Standard Time"), and Rails zone names — all in one call.
+        // Replaces the previous hardcoded 7-entry IANA→Windows dictionary.
+        return TZConvert.TryGetTimeZoneInfo(timezone, out var tz) ? tz : TimeZoneInfo.Utc;
     }
 
     private static bool IsUniqueConstraintViolation(DbUpdateException ex)
