@@ -53,11 +53,10 @@ public class RuleMatcher : IRuleMatcher
             matches.Add(new RuleMatchResult(rule, score));
         }
 
-        if (matches.Count > 0)
-        {
-            await _db.SaveChangesAsync(cancellationToken);
-        }
-
+        // MatchCount increments are left on tracked entities. SaveChangesAsync is
+        // intentionally NOT called here — the caller (InboundMessageConsumer) owns the
+        // save boundary. Calling SaveChangesAsync inside a read operation added an extra
+        // round-trip and coupled the matcher to the consumer's DbContext state.
         return matches;
     }
 

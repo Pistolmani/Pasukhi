@@ -57,8 +57,11 @@ public class FaqMatcher : IFaqMatcher
             return null;
         }
 
+        // Increment MatchCount on the tracked entity. SaveChangesAsync is intentionally
+        // NOT called here — the caller (InboundMessageConsumer) owns the save boundary.
+        // Calling SaveChangesAsync inside a read operation added an extra round-trip and
+        // coupled the matcher to the consumer's DbContext state.
         best.Faq.MatchCount++;
-        await _db.SaveChangesAsync(cancellationToken);
 
         return new FaqMatchResult(best.Faq, best.Confidence);
     }
