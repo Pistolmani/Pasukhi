@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.IdentityModel.Tokens;
 using Pasukhi.API.Middleware;
 using Pasukhi.Application.AI;
@@ -32,7 +33,10 @@ builder.Host.UseSerilog((ctx, lc) => lc
     .WriteTo.File("logs/pasukhi-.log", rollingInterval: RollingInterval.Day));
 
 builder.Services.AddDbContext<PasukhiDbContext>(options =>
-    options.UseNpgsql(ResolveConnectionString(builder.Configuration.GetConnectionString("DefaultConnection"))));
+{
+    options.UseNpgsql(ResolveConnectionString(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
+});
 
 builder.Services.AddIdentity<AdminUser, IdentityRole>(options =>
 {
