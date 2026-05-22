@@ -159,7 +159,9 @@ public class WebhookController : ControllerBase
                 RawPayloadJson = body
             };
 
-            await _inboundChannel.WriteAsync(evt, ct);
+            // TryWrite is non-blocking. With DropOldest mode the channel makes room
+            // by evicting the oldest event if it is full; Meta retries ensure delivery.
+            _inboundChannel.TryWrite(evt);
         }
 
         return Ok();

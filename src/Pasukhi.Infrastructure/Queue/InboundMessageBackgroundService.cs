@@ -33,10 +33,23 @@ public sealed class InboundMessageBackgroundService : BackgroundService
         _logger = logger;
     }
 
+    // Warn when the channel is above 80 % capacity — a sign that the consumer
+    // is falling behind (e.g. Gemini latency spike) and oldest events may be
+    // getting dropped (BoundedChannelFullMode.DropOldest).
+    private const int CapacityWarnThreshold = 410; // 80 % of 512
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await foreach (var evt in _reader.ReadAllAsync(stoppingToken))
         {
+            var pending = _reader.Count;
+            if (pending >= CapacityWarnThreshold)
+            {
+                _logger.LogWarning(
+                    "Inbound channel backpressure: {Pending}/512 events queued. Oldest events may be dropped. Investigate consumer latency.",
+                    pending);
+            }
+
             await ProcessWithRetryAsync(evt, stoppingToken);
         }
     }
