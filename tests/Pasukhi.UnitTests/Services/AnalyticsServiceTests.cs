@@ -1,3 +1,6 @@
+using NSubstitute;
+using Pasukhi.Application.Interfaces;
+using Pasukhi.Application.Plans;
 using Pasukhi.Domain.Entities;
 using Pasukhi.Domain.Enums;
 using Pasukhi.Infrastructure.Services;
@@ -53,7 +56,7 @@ public class AnalyticsServiceTests
             });
         await db.SaveChangesAsync();
 
-        var service = new AnalyticsService(db);
+        var service = new AnalyticsService(db, FullAnalyticsStub());
         var result = await service.GetDashboardAsync(days: 7);
 
         Assert.Equal(15, result.TotalInbound);
@@ -64,6 +67,7 @@ public class AnalyticsServiceTests
         Assert.Equal(200, result.AiTokensUsed);
         Assert.Equal(1, result.Escalations);
         Assert.Equal(10d / 15d, result.AutoReplyRate);
+        Assert.True(result.IsFullAnalytics);
 
         Assert.Equal(2, result.ChannelBreakdown.Count);
         Assert.Contains(result.ChannelBreakdown, row => row.ChannelType == ChannelType.Instagram && row.TotalInbound == 10);
@@ -75,7 +79,7 @@ public class AnalyticsServiceTests
     public async Task GetDashboardAsync_returns_zero_rate_when_no_inbound()
     {
         await using var db = TestDb.Create();
-        var service = new AnalyticsService(db);
+        var service = new AnalyticsService(db, FullAnalyticsStub());
 
         var result = await service.GetDashboardAsync(days: 7);
 
@@ -83,5 +87,13 @@ public class AnalyticsServiceTests
         Assert.Equal(0, result.AutoReplyRate);
         Assert.Empty(result.ChannelBreakdown);
         Assert.Empty(result.DailyBreakdown);
+    }
+
+    private static IPlanLimitsService FullAnalyticsStub()
+    {
+        var stub = Substitute.For<IPlanLimitsService>();
+        stub.GetCurrentAsync(Arg.Any<CancellationToken>())
+            .Returns(PlanLimits.ByTier[Pasukhi.Domain.Enums.SubscriptionTier.Pro]);
+        return stub;
     }
 }

@@ -31,4 +31,11 @@ public record DashboardStatsDto(
     int Escalations,
     double AutoReplyRate,
     List<ChannelBreakdownDto> ChannelBreakdown,
-    List<DailyBreakdownDto> DailyBreakdown);
+    List<DailyBreakdownDto> DailyBreakdown,
+    /// <summary>Current subscription tier of the business.</summary>
+    SubscriptionTier Tier,
+    /// <summary>
+    /// When false the response is Basic-only: today's totals, empty breakdowns.
+    /// When true the full historical window and per-channel data are included.
+    /// </summary>
+    bool IsFullAnalytics);
