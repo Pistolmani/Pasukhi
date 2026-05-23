@@ -98,6 +98,9 @@ builder.Services.AddScoped<IFaqService, FaqService>();
 builder.Services.AddScoped<IRuleService, RuleService>();
 builder.Services.AddScoped<IFaqMatcher, FaqMatcher>();
 builder.Services.AddScoped<IRuleMatcher, RuleMatcher>();
+builder.Services.AddScoped<IDailyMetricsService, DailyMetricsService>();
+builder.Services.AddScoped<IInboundMessagePersistenceService, InboundMessagePersistenceService>();
+builder.Services.AddScoped<IMessageAutomationOrchestrator, MessageAutomationOrchestrator>();
 builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("AI"));
 builder.Services.AddScoped<IAiPromptBuilder, AiPromptBuilder>();
 builder.Services.AddScoped<IAiSafetyChecker, AiSafetyChecker>();
@@ -118,6 +121,7 @@ builder.Services.AddScoped<IMetaWebhookParser, MetaWebhookParser>();
 builder.Services.AddHttpClient<IInstagramChannelProvider, InstagramChannelProvider>();
 builder.Services.AddHttpClient<IMessengerChannelProvider, MessengerChannelProvider>();
 builder.Services.AddHttpClient<IWhatsAppChannelProvider, WhatsAppChannelProvider>();
+builder.Services.AddScoped<IChannelDispatcher, ChannelDispatcher>();
 builder.Services.AddHttpClient<IMessengerProfileService, MessengerProfileService>();
 builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
 
@@ -153,6 +157,8 @@ builder.Services.AddSingleton(inboundChannel.Writer);
 builder.Services.AddSingleton(inboundChannel.Reader);
 builder.Services.AddSingleton(outboundChannel.Writer);
 builder.Services.AddSingleton(outboundChannel.Reader);
+builder.Services.AddSingleton<IInboundMessageEnqueuer, ChannelInboundMessageEnqueuer>();
+builder.Services.AddSingleton<IOutboundMessageEnqueuer, ChannelOutboundMessageEnqueuer>();
 
 builder.Services.AddScoped<InboundMessageConsumer>();
 builder.Services.AddScoped<OutboundMessageConsumer>();
