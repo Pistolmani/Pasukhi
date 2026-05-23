@@ -10,22 +10,16 @@ namespace Pasukhi.Infrastructure.Consumers;
 public class OutboundMessageConsumer
 {
     private readonly PasukhiDbContext _db;
-    private readonly IInstagramChannelProvider _instagram;
-    private readonly IMessengerChannelProvider _messenger;
-    private readonly IWhatsAppChannelProvider _whatsApp;
+    private readonly IChannelDispatcher _dispatcher;
     private readonly ILogger<OutboundMessageConsumer> _logger;
 
     public OutboundMessageConsumer(
         PasukhiDbContext db,
-        IInstagramChannelProvider instagram,
-        IMessengerChannelProvider messenger,
-        IWhatsAppChannelProvider whatsApp,
+        IChannelDispatcher dispatcher,
         ILogger<OutboundMessageConsumer> logger)
     {
         _db = db;
-        _instagram = instagram;
-        _messenger = messenger;
-        _whatsApp = whatsApp;
+        _dispatcher = dispatcher;
         _logger = logger;
     }
 
@@ -78,7 +72,7 @@ public class OutboundMessageConsumer
 
         try
         {
-            var externalMessageId = await SendAsync(channelType, evt, channel.AccessToken, channel.ExternalAccountId, ct);
+            var externalMessageId = await _dispatcher.SendAsync(channelType, evt, channel.AccessToken, channel.ExternalAccountId, ct);
 
             message.ExternalMessageId = externalMessageId;
             message.DeliveryStatus = DeliveryStatus.Sent;
@@ -104,31 +98,4 @@ public class OutboundMessageConsumer
             }
         }
     }
-
-    private Task<string> SendAsync(
-        ChannelType channelType,
-        OutboundMessageReadyEvent evt,
-        string accessToken,
-        string externalAccountId,
-        CancellationToken ct) =>
-        channelType switch
-        {
-            ChannelType.Instagram => _instagram.SendMessageAsync(
-                evt.ExternalCustomerId,
-                evt.TextContent,
-                accessToken,
-                ct),
-            ChannelType.Messenger => _messenger.SendMessageAsync(
-                evt.ExternalCustomerId,
-                evt.TextContent,
-                accessToken,
-                ct),
-            ChannelType.WhatsApp => _whatsApp.SendMessageAsync(
-                evt.ExternalCustomerId,
-                evt.TextContent,
-                accessToken,
-                externalAccountId,
-                ct),
-            _ => throw new InvalidOperationException($"Unsupported channel type {channelType}.")
-        };
 }

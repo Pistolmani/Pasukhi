@@ -1,4 +1,3 @@
-using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
 using Pasukhi.Application.DTOs.Conversations;
 using Pasukhi.Application.Interfaces;
@@ -16,13 +15,13 @@ public class ConversationService : IConversationService
 
     private readonly PasukhiDbContext _db;
     private readonly ITenantProvider _tenantProvider;
-    private readonly ChannelWriter<OutboundMessageReadyEvent> _outboundWriter;
+    private readonly IOutboundMessageEnqueuer _outboundEnqueuer;
 
-    public ConversationService(PasukhiDbContext db, ITenantProvider tenantProvider, ChannelWriter<OutboundMessageReadyEvent> outboundWriter)
+    public ConversationService(PasukhiDbContext db, ITenantProvider tenantProvider, IOutboundMessageEnqueuer outboundEnqueuer)
     {
         _db = db;
         _tenantProvider = tenantProvider;
-        _outboundWriter = outboundWriter;
+        _outboundEnqueuer = outboundEnqueuer;
     }
 
     public async Task<List<ConversationListItemDto>> GetAllAsync(CancellationToken ct = default)
@@ -185,7 +184,7 @@ public class ConversationService : IConversationService
 
         await _db.SaveChangesAsync(ct);
 
-        await _outboundWriter.WriteAsync(new OutboundMessageReadyEvent
+        await _outboundEnqueuer.EnqueueAsync(new OutboundMessageReadyEvent
         {
             BusinessId = businessId,
             MessageId = message.Id,

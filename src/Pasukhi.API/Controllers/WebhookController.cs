@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using System.Threading.Channels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +19,7 @@ public class WebhookController : ControllerBase
     private readonly IWebhookSignatureVerifier _verifier;
     private readonly IWebhookResolver _resolver;
     private readonly IMetaWebhookParser _parser;
-    private readonly ChannelWriter<InboundMessageEvent> _inboundChannel;
+    private readonly IInboundMessageEnqueuer _inboundEnqueuer;
     private readonly PasukhiDbContext _db;
     private readonly IConfiguration _config;
     private readonly ILogger<WebhookController> _logger;
@@ -29,7 +28,7 @@ public class WebhookController : ControllerBase
         IWebhookSignatureVerifier verifier,
         IWebhookResolver resolver,
         IMetaWebhookParser parser,
-        ChannelWriter<InboundMessageEvent> inboundChannel,
+        IInboundMessageEnqueuer inboundEnqueuer,
         PasukhiDbContext db,
         IConfiguration config,
         ILogger<WebhookController> logger)
@@ -37,7 +36,7 @@ public class WebhookController : ControllerBase
         _verifier = verifier;
         _resolver = resolver;
         _parser = parser;
-        _inboundChannel = inboundChannel;
+        _inboundEnqueuer = inboundEnqueuer;
         _db = db;
         _config = config;
         _logger = logger;
@@ -159,9 +158,9 @@ public class WebhookController : ControllerBase
                 RawPayloadJson = body
             };
 
-            // TryWrite is non-blocking. With DropOldest mode the channel makes room
+            // Non-blocking enqueue. With DropOldest mode the channel makes room
             // by evicting the oldest event if it is full; Meta retries ensure delivery.
-            _inboundChannel.TryWrite(evt);
+            _inboundEnqueuer.TryEnqueue(evt);
         }
 
         return Ok();
