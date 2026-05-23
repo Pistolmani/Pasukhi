@@ -47,21 +47,11 @@ public class SettingsService : ISettingsService
 
     private static BusinessSettingsDto Map(Dictionary<string, string> settings) =>
         new(
-            ReadBool(settings, SettingKeys.AutoReplyEnabled, defaultValue: true),
-            ReadBool(settings, SettingKeys.WorkingHoursEnabled, defaultValue: false),
-            ReadString(settings, SettingKeys.WorkingHoursStart, DefaultWorkingHoursStart),
-            ReadString(settings, SettingKeys.WorkingHoursEnd, DefaultWorkingHoursEnd),
-            ReadString(settings, SettingKeys.Timezone, DefaultTimezone));
-
-    private static bool ReadBool(Dictionary<string, string> settings, string key, bool defaultValue) =>
-        settings.TryGetValue(key, out var value) && bool.TryParse(value, out var parsed)
-            ? parsed
-            : defaultValue;
-
-    private static string ReadString(Dictionary<string, string> settings, string key, string defaultValue) =>
-        settings.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
-            ? value
-            : defaultValue;
+            KeyValueSettingsReader.ReadBool(settings, SettingKeys.AutoReplyEnabled, defaultValue: true),
+            KeyValueSettingsReader.ReadBool(settings, SettingKeys.WorkingHoursEnabled, defaultValue: false),
+            KeyValueSettingsReader.ReadString(settings, SettingKeys.WorkingHoursStart, DefaultWorkingHoursStart),
+            KeyValueSettingsReader.ReadString(settings, SettingKeys.WorkingHoursEnd, DefaultWorkingHoursEnd),
+            KeyValueSettingsReader.ReadString(settings, SettingKeys.Timezone, DefaultTimezone));
 
     private void Upsert(Dictionary<string, BusinessSetting> settings, Guid businessId, string key, string value)
     {
