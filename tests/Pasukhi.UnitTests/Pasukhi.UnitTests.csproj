@@ -21,6 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Pasukhi.API\Pasukhi.API.csproj" />
     <ProjectReference Include="..\..\src\Pasukhi.Application\Pasukhi.Application.csproj" />
     <ProjectReference Include="..\..\src\Pasukhi.Domain\Pasukhi.Domain.csproj" />
     <ProjectReference Include="..\..\src\Pasukhi.Infrastructure\Pasukhi.Infrastructure.csproj" />

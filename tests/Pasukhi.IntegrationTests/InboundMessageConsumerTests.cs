@@ -10,6 +10,7 @@ using Pasukhi.Domain.Entities;
 using Pasukhi.Domain.Enums;
 using Pasukhi.Infrastructure.Consumers;
 using Pasukhi.Infrastructure.Data;
+using Pasukhi.Infrastructure.Queue;
 using Pasukhi.Infrastructure.Services;
 using Pasukhi.Infrastructure.Tenant;
 
@@ -30,6 +31,9 @@ public class InboundMessageConsumerTests
         services.AddScoped<IFaqMatcher, FaqMatcher>();
         services.AddScoped<IRuleMatcher, RuleMatcher>();
         services.AddScoped<ISettingsService, SettingsService>();
+        services.AddScoped<IDailyMetricsService, DailyMetricsService>();
+        services.AddScoped<IInboundMessagePersistenceService, InboundMessagePersistenceService>();
+        services.AddScoped<IMessageAutomationOrchestrator, MessageAutomationOrchestrator>();
         services.Configure<AiOptions>(options =>
         {
             options.Provider = "OpenAI";
@@ -47,6 +51,7 @@ public class InboundMessageConsumerTests
         var outboundChannel = Channel.CreateUnbounded<OutboundMessageReadyEvent>();
         services.AddSingleton(outboundChannel.Writer);
         services.AddSingleton(outboundChannel.Reader);
+        services.AddSingleton<IOutboundMessageEnqueuer, ChannelOutboundMessageEnqueuer>();
 
         services.AddScoped<InboundMessageConsumer>();
 
