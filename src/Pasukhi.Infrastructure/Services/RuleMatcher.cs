@@ -2,21 +2,16 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Pasukhi.Application.Interfaces;
 using Pasukhi.Application.Text;
-using Pasukhi.Domain.Entities;
 using Pasukhi.Domain.Enums;
 using Pasukhi.Infrastructure.Data;
 
 namespace Pasukhi.Infrastructure.Services;
 
-public class RuleMatcher : IRuleMatcher
+public class RuleMatcher : BaseMatcher, IRuleMatcher
 {
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(100);
-    private readonly PasukhiDbContext _db;
 
-    public RuleMatcher(PasukhiDbContext db)
-    {
-        _db = db;
-    }
+    public RuleMatcher(PasukhiDbContext db) : base(db) { }
 
     public async Task<IReadOnlyList<RuleMatchResult>> FindMatchesAsync(
         Guid businessId,
@@ -26,15 +21,10 @@ public class RuleMatcher : IRuleMatcher
         CancellationToken cancellationToken = default)
     {
         if (businessId == Guid.Empty)
-        {
             return Array.Empty<RuleMatchResult>();
-        }
 
-        // Matchers are called by background consumers too, so they use explicit businessId
-        // predicates instead of depending on whichever tenant provider is currently active.
-        var rules = await _db.AutomationRules
-            .IgnoreQueryFilters()
-            .Where(r => r.BusinessId == businessId && r.IsActive)
+        var rules = await TenantQuery(Db.AutomationRules, businessId)
+            .Where(r => r.IsActive)
             .OrderBy(r => r.Priority)
             .ThenBy(r => r.Name)
             .ToListAsync(cancellationToken);
@@ -45,23 +35,17 @@ public class RuleMatcher : IRuleMatcher
         {
             var score = ScoreRule(rule, messageText, messageType, receivedAt);
             if (score <= 0)
-            {
                 continue;
-            }
 
             rule.MatchCount++;
             matches.Add(new RuleMatchResult(rule, score));
         }
 
-        // MatchCount increments are left on tracked entities. SaveChangesAsync is
-        // intentionally NOT called here — the caller (InboundMessageConsumer) owns the
-        // save boundary. Calling SaveChangesAsync inside a read operation added an extra
-        // round-trip and coupled the matcher to the consumer's DbContext state.
         return matches;
     }
 
     private static double ScoreRule(
-        AutomationRule rule,
+        Domain.Entities.AutomationRule rule,
         string messageText,
         MessageType messageType,
         DateTimeOffset receivedAt) =>
@@ -83,9 +67,7 @@ public class RuleMatcher : IRuleMatcher
             .ToList();
 
         if (values.Count == 0)
-        {
             return 0.0;
-        }
 
         var matches = values.Count(normalizedMessage.Contains);
         return matches == 0 ? 0.0 : (double)matches / values.Count;
@@ -101,22 +83,14 @@ public class RuleMatcher : IRuleMatcher
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
                 RegexTimeout);
         }
-        catch (ArgumentException)
-        {
-            return false;
-        }
-        catch (RegexMatchTimeoutException)
-        {
-            return false;
-        }
+        catch (ArgumentException) { return false; }
+        catch (RegexMatchTimeoutException) { return false; }
     }
 
     private static bool MatchesMessageType(string triggerValue, MessageType messageType)
     {
         if (Enum.TryParse<MessageType>(triggerValue, ignoreCase: true, out var expected))
-        {
             return expected == messageType;
-        }
 
         return int.TryParse(triggerValue, out var value) && value == (int)messageType;
     }
@@ -125,9 +99,7 @@ public class RuleMatcher : IRuleMatcher
     {
         var parts = triggerValue.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (parts.Length != 2 || !TimeSpan.TryParse(parts[0], out var start) || !TimeSpan.TryParse(parts[1], out var end))
-        {
             return false;
-        }
 
         var current = receivedAt.TimeOfDay;
         return start <= end
