@@ -8,53 +8,16 @@ namespace Pasukhi.API.Controllers;
 [ApiController]
 [Route("api/channels")]
 [Authorize]
-public class ChannelsController : ControllerBase
+public class ChannelsController : CrudControllerBase<ChannelConnectionDto, CreateChannelConnectionRequest, UpdateChannelConnectionRequest, IChannelService>
 {
-    private readonly IChannelService _channels;
     private readonly IMessengerProfileService _messengerProfile;
 
-    public ChannelsController(IChannelService channels, IMessengerProfileService messengerProfile)
+    public ChannelsController(IChannelService channels, IMessengerProfileService messengerProfile) : base(channels)
     {
-        _channels = channels;
         _messengerProfile = messengerProfile;
     }
 
-    [HttpGet]
-    public async Task<IActionResult> GetAll(CancellationToken cancellationToken) =>
-        Ok(await _channels.GetAllAsync(cancellationToken));
-
-    [HttpGet("{id:guid}")]
-    public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
-    {
-        var result = await _channels.GetByIdAsync(id, cancellationToken);
-        return result is null ? NotFound() : Ok(result);
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> Create(
-        [FromBody] CreateChannelConnectionRequest request,
-        CancellationToken cancellationToken)
-    {
-        var result = await _channels.CreateAsync(request, cancellationToken);
-        return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
-    }
-
-    [HttpPut("{id:guid}")]
-    public async Task<IActionResult> Update(
-        Guid id,
-        [FromBody] UpdateChannelConnectionRequest request,
-        CancellationToken cancellationToken)
-    {
-        var result = await _channels.UpdateAsync(id, request, cancellationToken);
-        return Ok(result);
-    }
-
-    [HttpDelete("{id:guid}")]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
-    {
-        await _channels.DeleteAsync(id, cancellationToken);
-        return NoContent();
-    }
+    protected override Guid GetEntityId(ChannelConnectionDto dto) => dto.Id;
 
     [HttpPost("messenger-profile/sync")]
     public async Task<IActionResult> SyncMessengerProfile(
