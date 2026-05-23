@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -9,75 +8,45 @@ using Pasukhi.Application.Interfaces;
 
 namespace Pasukhi.Infrastructure.Services;
 
-public class OpenAiService : IAiService
+public class OpenAiService : BaseAiService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private readonly HttpClient _httpClient;
-    private readonly AiOptions _options;
-    private readonly ILogger<OpenAiService> _logger;
-
     public OpenAiService(
         HttpClient httpClient,
         IOptions<AiOptions> options,
         ILogger<OpenAiService> logger)
+        : base(httpClient, options.Value, logger)
     {
-        _httpClient = httpClient;
-        _options = options.Value;
-        _logger = logger;
-
-        _httpClient.BaseAddress ??= new Uri("https://api.openai.com/v1/");
-        _httpClient.Timeout = TimeSpan.FromSeconds(Math.Max(1, _options.RequestTimeoutSeconds));
+        HttpClient.BaseAddress ??= new Uri("https://api.openai.com/v1/");
     }
 
-    public async Task<AiReplyResult> GenerateReplyAsync(AiContext context, CancellationToken ct = default)
+    protected override string ProviderName => "OpenAI";
+
+    protected override HttpRequestMessage BuildHttpRequest(AiContext context)
     {
-        if (string.IsNullOrWhiteSpace(_options.ApiKey))
-        {
-            return Failure("AI API key is not configured.");
-        }
-
-        var stopwatch = Stopwatch.StartNew();
-        try
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Post, "responses");
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
-            request.Content = new StringContent(
-                JsonSerializer.Serialize(BuildRequest(context), JsonOptions),
-                Encoding.UTF8,
-                "application/json");
-
-            using var response = await _httpClient.SendAsync(request, ct);
-            var content = await response.Content.ReadAsStringAsync(ct);
-            stopwatch.Stop();
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning(
-                    "OpenAI response failed with status {StatusCode}: {Body}",
-                    (int)response.StatusCode,
-                    Truncate(content, 500));
-                return Failure($"OpenAI returned HTTP {(int)response.StatusCode}.", stopwatch.Elapsed);
-            }
-
-            return ParseResponse(content, stopwatch.Elapsed);
-        }
-        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
-        {
-            stopwatch.Stop();
-            _logger.LogWarning(ex, "OpenAI request timed out.");
-            return Failure("OpenAI request timed out.", stopwatch.Elapsed);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException)
-        {
-            stopwatch.Stop();
-            _logger.LogWarning(ex, "OpenAI request failed.");
-            return Failure("OpenAI request failed.", stopwatch.Elapsed);
-        }
+        var request = new HttpRequestMessage(HttpMethod.Post, "responses");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Options.ApiKey);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(BuildRequestBody(context), JsonOptions),
+            Encoding.UTF8,
+            "application/json");
+        return request;
     }
 
-    private object BuildRequest(AiContext context) => new
+    protected override AiReplyResult ParseResponse(string content, TimeSpan elapsed)
     {
-        model = string.IsNullOrWhiteSpace(_options.Model) ? _options.GetDefaultModel() : _options.Model,
+        using var doc = JsonDocument.Parse(content);
+        var outputText = FindOutputText(doc.RootElement);
+        if (string.IsNullOrWhiteSpace(outputText))
+            return Failure("OpenAI response did not include output text.", elapsed);
+
+        var tokensUsed = TryReadTotalTokens(doc.RootElement);
+        using var outputDoc = JsonDocument.Parse(outputText);
+        return ParseOutputJson(outputDoc.RootElement, tokensUsed, elapsed);
+    }
+
+    private object BuildRequestBody(AiContext context) => new
+    {
+        model = string.IsNullOrWhiteSpace(Options.Model) ? Options.GetDefaultModel() : Options.Model,
         input = new object[]
         {
             new
@@ -119,9 +88,9 @@ public class OpenAiService : IAiService
                 }
             }
         },
-        max_output_tokens = _options.MaxTokens,
-        temperature = _options.Temperature,
-        reasoning = new { effort = _options.ReasoningEffort }
+        max_output_tokens = Options.MaxTokens,
+        temperature = Options.Temperature,
+        reasoning = new { effort = Options.ReasoningEffort }
     };
 
     private static string BuildSystemPrompt(AiContext context) =>
@@ -138,29 +107,16 @@ public class OpenAiService : IAiService
         Respond in the same language the customer is using.
         """;
 
-    private static string BuildUserPrompt(AiContext context)
-    {
-        var faqs = context.RelevantFaqs.Count == 0
-            ? "No FAQ context is available."
-            : string.Join(
-                "\n\n",
-                context.RelevantFaqs.Select(f => $"Q: {f.Question}\nA: {f.Answer}"));
-
-        var history = context.ConversationHistory.Count == 0
-            ? "No previous messages."
-            : string.Join(
-                "\n",
-                context.ConversationHistory.Select(m => $"{m.Role}: {m.Content}"));
-
-        return $"""
+    private string BuildUserPrompt(AiContext context) =>
+        $"""
         Customer display name: {context.CustomerDisplayName}
         Channel: {context.ChannelType}
 
         FAQ context:
-        {faqs}
+        {FormatFaqs(context)}
 
         Previous messages:
-        {history}
+        {FormatHistory(context)}
 
         Latest customer message:
         {context.InboundMessageText}
@@ -168,42 +124,6 @@ public class OpenAiService : IAiService
         Escalation fallback message:
         {context.EscalationMessage}
         """;
-    }
-
-    private static AiReplyResult ParseResponse(string content, TimeSpan elapsed)
-    {
-        using var doc = JsonDocument.Parse(content);
-        var outputText = FindOutputText(doc.RootElement);
-        if (string.IsNullOrWhiteSpace(outputText))
-        {
-            return Failure("OpenAI response did not include output text.", elapsed);
-        }
-
-        using var outputDoc = JsonDocument.Parse(outputText);
-        var root = outputDoc.RootElement;
-        var replyText = root.TryGetProperty("replyText", out var replyElement) && replyElement.ValueKind != JsonValueKind.Null
-            ? replyElement.GetString()
-            : null;
-        var confidence = root.TryGetProperty("confidenceScore", out var confidenceElement) &&
-                         confidenceElement.TryGetDouble(out var parsedConfidence)
-            ? parsedConfidence
-            : 0;
-        var shouldEscalate = root.TryGetProperty("shouldEscalate", out var escalateElement) &&
-                             escalateElement.ValueKind == JsonValueKind.True;
-        var escalationReason = root.TryGetProperty("escalationReason", out var reasonElement) &&
-                               reasonElement.ValueKind != JsonValueKind.Null
-            ? reasonElement.GetString()
-            : null;
-
-        return new AiReplyResult(
-            true,
-            replyText,
-            Math.Clamp(confidence, 0, 1),
-            shouldEscalate,
-            escalationReason,
-            TryReadTotalTokens(doc.RootElement),
-            elapsed);
-    }
 
     private static string? FindOutputText(JsonElement element)
     {
@@ -211,26 +131,20 @@ public class OpenAiService : IAiService
         {
             if (element.TryGetProperty("output_text", out var outputText) &&
                 outputText.ValueKind == JsonValueKind.String)
-            {
                 return outputText.GetString();
-            }
 
             if (element.TryGetProperty("type", out var type) &&
                 type.ValueKind == JsonValueKind.String &&
                 type.GetString() == "output_text" &&
                 element.TryGetProperty("text", out var text) &&
                 text.ValueKind == JsonValueKind.String)
-            {
                 return text.GetString();
-            }
 
             foreach (var property in element.EnumerateObject())
             {
                 var nested = FindOutputText(property.Value);
                 if (!string.IsNullOrWhiteSpace(nested))
-                {
                     return nested;
-                }
             }
         }
         else if (element.ValueKind == JsonValueKind.Array)
@@ -239,9 +153,7 @@ public class OpenAiService : IAiService
             {
                 var nested = FindOutputText(item);
                 if (!string.IsNullOrWhiteSpace(nested))
-                {
                     return nested;
-                }
             }
         }
 
@@ -259,10 +171,4 @@ public class OpenAiService : IAiService
 
         return 0;
     }
-
-    private static AiReplyResult Failure(string error, TimeSpan? elapsed = null) =>
-        new(false, null, 0, true, error, 0, elapsed ?? TimeSpan.Zero, error);
-
-    private static string Truncate(string value, int maxLength) =>
-        value.Length <= maxLength ? value : value[..maxLength];
 }
