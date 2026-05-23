@@ -1,7 +1,3 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { FormEvent } from 'react'
-import { useState } from 'react'
-import { toast } from 'sonner'
 import { rulesApi } from '../../api/rules'
 import { Button } from '../../components/ui/button'
 import { Checkbox } from '../../components/ui/checkbox'
@@ -31,7 +27,7 @@ import {
   TableRow,
 } from '../../components/ui/table'
 import { Textarea } from '../../components/ui/textarea'
-import { firstIssue } from '../../lib/form-utils'
+import { useCrudPage } from '../../hooks/useCrudPage'
 import { ruleSchema } from '../../schemas/rule-schemas'
 import {
   actionTypeLabels,
@@ -39,7 +35,6 @@ import {
   triggerTypeLabels,
   triggerTypes,
   type ActionType,
-  type AutomationRule,
   type SaveAutomationRuleRequest,
   type TriggerType,
 } from '../../types/rule'
@@ -55,45 +50,12 @@ const emptyForm: SaveAutomationRuleRequest = {
 }
 
 export function RulesPage() {
-  const queryClient = useQueryClient()
-  const [open, setOpen] = useState(false)
-  const [editing, setEditing] = useState<AutomationRule | null>(null)
-  const [form, setForm] = useState<SaveAutomationRuleRequest>({ ...emptyForm })
-
-  const rulesQuery = useQuery({
+  const crud = useCrudPage({
     queryKey: ['rules'],
-    queryFn: rulesApi.list,
-  })
-
-  const saveMutation = useMutation({
-    mutationFn: (payload: SaveAutomationRuleRequest) =>
-      editing ? rulesApi.update(editing.id, payload) : rulesApi.create(payload),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['rules'] })
-      toast.success(editing ? 'Rule updated' : 'Rule created')
-      closeDialog()
-    },
-    onError: () => toast.error('Could not save rule'),
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: rulesApi.remove,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['rules'] })
-      toast.success('Rule deleted')
-    },
-    onError: () => toast.error('Could not delete rule'),
-  })
-
-  const openCreate = () => {
-    setEditing(null)
-    setForm({ ...emptyForm })
-    setOpen(true)
-  }
-
-  const openEdit = (rule: AutomationRule) => {
-    setEditing(rule)
-    setForm({
+    api: rulesApi,
+    schema: ruleSchema,
+    emptyForm,
+    toForm: (rule) => ({
       name: rule.name,
       priority: rule.priority,
       triggerType: rule.triggerType,
@@ -101,33 +63,15 @@ export function RulesPage() {
       actionType: rule.actionType,
       actionValue: rule.actionValue,
       isActive: rule.isActive,
-    })
-    setOpen(true)
-  }
-
-  const closeDialog = () => {
-    setOpen(false)
-    setEditing(null)
-    setForm({ ...emptyForm })
-  }
-
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const payload = {
+    }),
+    preparePayload: (form) => ({
       ...form,
       name: form.name.trim(),
       triggerValue: form.triggerValue.trim(),
       actionValue: form.actionValue.trim(),
-    }
-
-    const parsed = ruleSchema.safeParse(payload)
-    if (!parsed.success) {
-      toast.error(firstIssue(parsed.error))
-      return
-    }
-
-    saveMutation.mutate(parsed.data)
-  }
+    }),
+    entityLabel: 'Rule',
+  })
 
   return (
     <div className="space-y-6">
@@ -136,7 +80,7 @@ export function RulesPage() {
           <h1 className="text-2xl font-semibold">Rules</h1>
           <p className="text-muted-foreground text-sm">Priority-ordered deterministic automation triggers.</p>
         </div>
-        <Button type="button" onClick={openCreate}>Add rule</Button>
+        <Button type="button" onClick={crud.openCreate}>Add rule</Button>
       </div>
 
       <div className="overflow-hidden rounded-md border">
@@ -153,7 +97,7 @@ export function RulesPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rulesQuery.data?.map((rule) => (
+            {crud.query.data?.map((rule) => (
               <TableRow key={rule.id}>
                 <TableCell>{rule.priority}</TableCell>
                 <TableCell className="font-medium">{rule.name}</TableCell>
@@ -168,19 +112,19 @@ export function RulesPage() {
                 <TableCell>{rule.matchCount}</TableCell>
                 <TableCell>{rule.isActive ? 'Active' : 'Paused'}</TableCell>
                 <TableCell className="space-x-2 text-right">
-                  <Button type="button" variant="outline" onClick={() => openEdit(rule)}>Edit</Button>
+                  <Button type="button" variant="outline" onClick={() => crud.openEdit(rule)}>Edit</Button>
                   <Button
                     type="button"
                     variant="destructive"
-                    disabled={deleteMutation.isPending}
-                    onClick={() => deleteMutation.mutate(rule.id)}
+                    disabled={crud.deleteMutation.isPending}
+                    onClick={() => crud.deleteMutation.mutate(rule.id)}
                   >
                     Delete
                   </Button>
                 </TableCell>
               </TableRow>
             ))}
-            {rulesQuery.data?.length === 0 && (
+            {crud.query.data?.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} className="text-muted-foreground py-8 text-center">
                   No rules yet.
@@ -191,20 +135,20 @@ export function RulesPage() {
         </Table>
       </div>
 
-      <Dialog open={open} onOpenChange={(nextOpen) => (nextOpen ? setOpen(true) : closeDialog())}>
+      <Dialog open={crud.open} onOpenChange={(next) => (next ? crud.setOpen(true) : crud.closeDialog())}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editing ? 'Edit rule' : 'Add rule'}</DialogTitle>
+            <DialogTitle>{crud.editing ? 'Edit rule' : 'Add rule'}</DialogTitle>
             <DialogDescription>Use lower priority numbers for rules that should run first.</DialogDescription>
           </DialogHeader>
-          <form className="space-y-4" onSubmit={onSubmit}>
+          <form className="space-y-4" onSubmit={crud.onSubmit}>
             <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
                 <Input
                   id="name"
-                  value={form.name}
-                  onChange={(event) => setForm({ ...form, name: event.target.value })}
+                  value={crud.form.name}
+                  onChange={(e) => crud.setForm({ ...crud.form, name: e.target.value })}
                   required
                 />
               </div>
@@ -214,8 +158,8 @@ export function RulesPage() {
                   id="priority"
                   type="number"
                   min={0}
-                  value={form.priority}
-                  onChange={(event) => setForm({ ...form, priority: Number(event.target.value) })}
+                  value={crud.form.priority}
+                  onChange={(e) => crud.setForm({ ...crud.form, priority: Number(e.target.value) })}
                 />
               </div>
             </div>
@@ -224,8 +168,8 @@ export function RulesPage() {
               <div className="space-y-2">
                 <Label>Trigger</Label>
                 <Select
-                  value={String(form.triggerType)}
-                  onValueChange={(value) => setForm({ ...form, triggerType: Number(value) as TriggerType })}
+                  value={String(crud.form.triggerType)}
+                  onValueChange={(value) => crud.setForm({ ...crud.form, triggerType: Number(value) as TriggerType })}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
@@ -243,8 +187,8 @@ export function RulesPage() {
               <div className="space-y-2">
                 <Label>Action</Label>
                 <Select
-                  value={String(form.actionType)}
-                  onValueChange={(value) => setForm({ ...form, actionType: Number(value) as ActionType })}
+                  value={String(crud.form.actionType)}
+                  onValueChange={(value) => crud.setForm({ ...crud.form, actionType: Number(value) as ActionType })}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
@@ -264,8 +208,8 @@ export function RulesPage() {
               <Label htmlFor="triggerValue">Trigger value</Label>
               <Input
                 id="triggerValue"
-                value={form.triggerValue}
-                onChange={(event) => setForm({ ...form, triggerValue: event.target.value })}
+                value={crud.form.triggerValue}
+                onChange={(e) => crud.setForm({ ...crud.form, triggerValue: e.target.value })}
                 placeholder="keyword list, regex, Text, or 18:00-09:00"
                 required
               />
@@ -276,24 +220,24 @@ export function RulesPage() {
               <Textarea
                 id="actionValue"
                 className="min-h-28"
-                value={form.actionValue}
-                onChange={(event) => setForm({ ...form, actionValue: event.target.value })}
+                value={crud.form.actionValue}
+                onChange={(e) => crud.setForm({ ...crud.form, actionValue: e.target.value })}
                 required
               />
             </div>
 
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
-                checked={form.isActive}
-                onCheckedChange={(checked) => setForm({ ...form, isActive: checked === true })}
+                checked={crud.form.isActive}
+                onCheckedChange={(checked) => crud.setForm({ ...crud.form, isActive: checked === true })}
               />
               Active
             </label>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={closeDialog}>Cancel</Button>
-              <Button type="submit" disabled={saveMutation.isPending}>
-                {editing ? 'Save rule' : 'Create rule'}
+              <Button type="button" variant="outline" onClick={crud.closeDialog}>Cancel</Button>
+              <Button type="submit" disabled={crud.saveMutation.isPending}>
+                {crud.editing ? 'Save rule' : 'Create rule'}
               </Button>
             </DialogFooter>
           </form>
