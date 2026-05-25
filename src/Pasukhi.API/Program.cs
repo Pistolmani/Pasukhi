@@ -181,6 +181,20 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 
 builder.Services.AddRateLimiter(options =>
 {
+    // Global per-IP fallback: 100 requests per minute for any endpoint that does
+    // not opt into a stricter named policy. Applied in addition to (not instead of)
+    // the auth and webhook policies below.
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromMinutes(1),
+                PermitLimit = 100,
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+
     // Per-IP: 10 auth requests per minute (login, refresh, OAuth callbacks)
     options.AddPolicy("auth", context =>
         RateLimitPartition.GetFixedWindowLimiter(
