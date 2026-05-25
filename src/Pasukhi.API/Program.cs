@@ -229,6 +229,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Must run before any middleware that depends on Connection.RemoteIpAddress or
+// Request.Scheme (rate limiter, request logging) so they see the real client.
+app.UseForwardedHeaders();
+
 app.UseSerilogRequestLogging();
 app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
