@@ -234,7 +234,13 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
     await db.Database.MigrateAsync();
-    await DbSeeder.SeedAsync(scope.ServiceProvider);
+
+    // Seeder creates default admin/operator users with known passwords for local
+    // development. Never run in production — manage prod users via the admin UI.
+    if (app.Environment.IsDevelopment())
+    {
+        await DbSeeder.SeedAsync(scope.ServiceProvider);
+    }
 }
 
 if (app.Environment.IsDevelopment())
