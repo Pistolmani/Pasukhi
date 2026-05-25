@@ -19,6 +19,9 @@ public class SecurityHeadersMiddleware
         headers["X-XSS-Protection"] = "1; mode=block";
         headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
         headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+        // API only serves JSON; the SPA on Vercel has its own CSP. `frame-ancestors 'none'`
+        // is the load-bearing part (clickjacking protection).
+        headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
 
         if (_isProduction)
             headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
