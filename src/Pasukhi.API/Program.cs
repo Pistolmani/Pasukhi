@@ -5,6 +5,7 @@ using System.Threading.RateLimiting;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -166,6 +167,17 @@ builder.Services.AddHostedService<InboundMessageBackgroundService>();
 builder.Services.AddHostedService<OutboundMessageBackgroundService>();
 
 builder.Services.AddHostedService<RefreshTokenCleanupService>();
+
+// Railway terminates TLS and forwards traffic via a proxy, so without trusting
+// X-Forwarded-For the rate limiter sees the proxy IP and all clients share a
+// single bucket. Clearing KnownNetworks/KnownProxies tells ASP.NET to trust any
+// upstream proxy — fine because the platform is the only hop in front of us.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 builder.Services.AddRateLimiter(options =>
 {
