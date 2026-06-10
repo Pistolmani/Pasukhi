@@ -5,6 +5,7 @@ using System.Threading.RateLimiting;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -167,8 +168,33 @@ builder.Services.AddHostedService<OutboundMessageBackgroundService>();
 
 builder.Services.AddHostedService<RefreshTokenCleanupService>();
 
+// Railway terminates TLS and forwards traffic via a proxy, so without trusting
+// X-Forwarded-For the rate limiter sees the proxy IP and all clients share a
+// single bucket. Clearing KnownNetworks/KnownProxies tells ASP.NET to trust any
+// upstream proxy — fine because the platform is the only hop in front of us.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 builder.Services.AddRateLimiter(options =>
 {
+    // Global per-IP fallback: 100 requests per minute for any endpoint that does
+    // not opt into a stricter named policy. Applied in addition to (not instead of)
+    // the auth and webhook policies below.
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromMinutes(1),
+                PermitLimit = 100,
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+
     // Per-IP: 10 auth requests per minute (login, refresh, OAuth callbacks)
     options.AddPolicy("auth", context =>
         RateLimitPartition.GetFixedWindowLimiter(
@@ -208,7 +234,13 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PasukhiDbContext>();
     await db.Database.MigrateAsync();
-    await DbSeeder.SeedAsync(scope.ServiceProvider);
+
+    // Seeder creates default admin/operator users with known passwords for local
+    // development. Never run in production — manage prod users via the admin UI.
+    if (app.Environment.IsDevelopment())
+    {
+        await DbSeeder.SeedAsync(scope.ServiceProvider);
+    }
 }
 
 if (app.Environment.IsDevelopment())
@@ -216,6 +248,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Must run before any middleware that depends on Connection.RemoteIpAddress or
+// Request.Scheme (rate limiter, request logging) so they see the real client.
+app.UseForwardedHeaders();
 
 app.UseSerilogRequestLogging();
 app.UseMiddleware<SecurityHeadersMiddleware>();
